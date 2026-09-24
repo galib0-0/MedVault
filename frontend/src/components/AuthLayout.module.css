@@ -1,0 +1,204 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(96, 165, 250, 0.18), transparent 60%),
+    radial-gradient(900px 520px at -10% 110%, rgba(30, 64, 175, 0.12), transparent 55%),
+    var(--bg-page);
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 1020px;
+  min-height: 640px;
+  display: grid;
+  grid-template-columns: 42% 58%;
+  background: var(--white);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.brandPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 44px 46px 36px;
+  background: var(--grad-brand);
+  color: #fff;
+  text-align: center;
+}
+
+.welcome {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.brandCenter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  margin: 36px 0;
+}
+
+.brandPanel .brandCenter .mv-logo svg {
+  width: 108px;
+  height: 108px;
+}
+
+.brandName {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.brandName span {
+  color: #dbeafe;
+}
+
+.brandSub {
+  margin: 0;
+  max-width: 300px;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.brandFooter {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cloudWrap {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 70px;
+  pointer-events: none;
+}
+
+.cloudWrap svg {
+  width: 100%;
+  height: 100%;
+}
+
+.cloudWrapH {
+  display: none;
+}
+
+.formPanel {
+  background: var(--white);
+}
+
+.formInner {
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 56px 44px;
+}
+
+.cardWide .formInner {
+  max-width: 620px;
+  padding: 44px 48px 56px;
+}
+
+.formTitle {
+  margin: 0 0 8px;
+  font-size: 27px;
+  font-weight: 800;
+  color: var(--text-strong);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.formSubtitle {
+  margin: 0 0 28px;
+  font-size: 14.5px;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 0;
+    display: block;
+  }
+
+  .card {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .brandPanel {
+    padding: 40px 20px 54px;
+    justify-content: center;
+  }
+
+  .brandCenter {
+    margin: 8px 0 0;
+    gap: 12px;
+  }
+
+  .brandPanel .brandCenter .mv-logo svg {
+    width: 72px;
+    height: 72px;
+  }
+
+  .brandName {
+    font-size: 24px;
+  }
+
+  .welcome,
+  .brandSub,
+  .brandFooter {
+    display: none;
+  }
+
+  .cloudWrap {
+    display: none;
+  }
+
+  .cloudWrapH {
+    display: block;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -2px;
+    height: 48px;
+    pointer-events: none;
+  }
+
+  .formInner {
+    padding: 40px 24px 56px;
+  }
+
+  .cardWide .formInner {
+    padding: 36px 24px 56px;
+  }
+}
+
+@media (max-width: 480px) {
+  .formInner,
+  .cardWide .formInner {
+    padding: 32px 20px 48px;
+  }
+}

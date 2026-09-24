@@ -1,0 +1,130 @@
+.field {
+  margin-bottom: 22px;
+}
+
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 2px;
+  letter-spacing: 0.01em;
+}
+
+.asterisk {
+  color: var(--brand-500);
+  margin-left: 2px;
+}
+
+.wrap {
+  position: relative;
+}
+
+.input {
+  width: 100%;
+  padding: 11px 0;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text-strong);
+  outline: none;
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input:focus {
+  color: var(--text-strong);
+}
+
+.wrap.hasEye .input {
+  padding-right: 34px;
+}
+
+.wrap.hasCheck:not(.hasEye) .input {
+  padding-right: 30px;
+}
+
+.wrap.hasEye.hasCheck .input {
+  padding-right: 62px;
+}
+
+.underline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--line);
+  border-radius: 2px;
+  transition: background 0.18s ease, transform 0.18s ease;
+  transform-origin: left;
+}
+
+.input:focus ~ .underline {
+  background: var(--brand-600);
+  transform: scaleX(1.02);
+}
+
+.wrap.hasError .underline {
+  background: var(--danger);
+}
+
+.check {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--brand-400);
+  display: inline-flex;
+  pointer-events: none;
+}
+
+.wrap.hasEye.hasCheck .check {
+  right: 30px;
+}
+
+.check svg {
+  width: 18px;
+  height: 18px;
+}
+
+.eyeBtn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-faint);
+  display: inline-flex;
+  padding: 4px;
+  transition: color 0.15s ease;
+}
+
+.eyeBtn:hover {
+  color: var(--brand-600);
+}
+
+.eyeBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.error {
+  margin: 7px 0 0;
+  font-size: 12.5px;
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.hint {
+  margin: 7px 0 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}

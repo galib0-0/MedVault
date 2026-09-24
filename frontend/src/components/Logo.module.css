@@ -1,0 +1,26 @@
+.wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.wrap svg {
+  width: 96px;
+  height: 96px;
+  display: block;
+  filter: drop-shadow(0 12px 24px rgba(29, 78, 216, 0.28));
+}
+
+.text {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: inherit;
+  line-height: 1.1;
+}
+
+.text em {
+  font-style: normal;
+  color: var(--brand-400);
+}

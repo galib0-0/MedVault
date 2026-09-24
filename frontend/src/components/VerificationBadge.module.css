@@ -1,0 +1,51 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.badge svg {
+  flex-shrink: 0;
+}
+
+.md {
+  font-size: 13.5px;
+  padding: 8px 16px;
+}
+
+.md svg {
+  width: 16px;
+  height: 16px;
+}
+
+.lg {
+  font-size: 15px;
+  padding: 11px 22px;
+}
+
+.lg svg {
+  width: 19px;
+  height: 19px;
+}
+
+.pending {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.verified {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}

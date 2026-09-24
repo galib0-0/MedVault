@@ -1,0 +1,87 @@
+:root {
+  --brand-900: #1e3a8a;
+  --brand-800: #1e40af;
+  --brand-700: #1d4ed8;
+  --brand-600: #2563eb;
+  --brand-500: #3b82f6;
+  --brand-400: #60a5fa;
+  --brand-300: #93c5fd;
+  --brand-200: #bfdbfe;
+  --brand-100: #dbeafe;
+  --brand-50: #eff6ff;
+
+  --grad-brand: linear-gradient(150deg, #1d4ed8 0%, #3b82f6 58%, #60a5fa 100%);
+  --grad-brand-soft: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+
+  --bg-page: #eef2f7;
+  --text-strong: #0f172a;
+  --text-body: #334155;
+  --text-soft: #64748b;
+  --text-faint: #94a3b8;
+  --line: #e2e8f0;
+
+  --white: #ffffff;
+  --danger: #ef4444;
+  --success: #16a34a;
+
+  --radius-card: 28px;
+  --shadow-card: 0 30px 80px -30px rgba(29, 78, 216, 0.35),
+    0 12px 40px -20px rgba(15, 23, 42, 0.14);
+
+  --font: "Plus Jakarta Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text-body);
+  background: var(--bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+a {
+  color: var(--brand-600);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
