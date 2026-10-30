@@ -206,9 +206,25 @@ router.post('/', requireAuth, (req, res) => {
               critical: Boolean(summary.critical),
             }
           );
-        } catch {
-          /* background update failure is non-fatal */
+        } catch (updateErr) {
+          console.error('[Record Update Error]:', updateErr);
         }
+      }).catch(async (fatalErr) => {
+        console.error('[Record Summarize Fatal]:', fatalErr.message);
+        await Record.updateOne(
+          { _id: record._id },
+          {
+            aiStatus: 'failed',
+            aiSummary: {
+              summary: `AI summarization encountered an issue (${fatalErr.message}). You can click below to retry.`,
+              finding: 'AI analysis error',
+              findingType: 'none',
+              recommendation: 'Click retry to re-analyze with Gemini.',
+              critical: false,
+              source: 'error',
+            },
+          }
+        ).catch(() => {});
       });
 
       res.status(201).json({ record });

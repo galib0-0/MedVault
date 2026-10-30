@@ -237,21 +237,41 @@ function sleep(ms) {
 
 async function callWithRetry(body, attempt = 0) {
   const apiKey = getApiKey();
+  const candidateModels = [
+    'gemini-3-flash-preview',
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+  ];
   const primaryModel = getModel();
-  const candidateModels = [primaryModel, 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-flash-lite-latest'];
-  const models = candidateModels.filter((m, i, arr) => arr.indexOf(m) === i);
+  const models = [primaryModel, ...candidateModels].filter((m, i, arr) => arr.indexOf(m) === i);
   const model = models[attempt % models.length];
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body,
-  });
-  const json = await res.json().catch(() => ({}));
+  let res;
+  let json;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 40000);
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    json = await res.json().catch(() => ({}));
+  } catch (netErr) {
+    console.warn(`[Gemini API] Network/Timeout error on model ${model} (attempt ${attempt}):`, netErr.message);
+    if (attempt < models.length * 2 - 1) {
+      await sleep(1000 * (attempt + 1));
+      return callWithRetry(body, attempt + 1);
+    }
+    throw netErr;
+  }
 
   if (res.ok) return json;
 
@@ -266,7 +286,7 @@ async function callWithRetry(body, attempt = 0) {
     json?.error?.status === 'NOT_FOUND';
 
   if (retryable && attempt < models.length * 2 - 1) {
-    await sleep(1200 * (attempt + 1));
+    await sleep(1000 * (attempt + 1));
     return callWithRetry(body, attempt + 1);
   }
 
@@ -304,7 +324,17 @@ export async function summarizeRecord({ filePath, originalName, category, mimeTy
   const prompt = isPrescription
     ? buildPrescriptionPrompt({ originalName, mimeType })
     : buildPrompt({ originalName, category, mimeType });
-  const safeMime = mimeType || 'application/octet-stream';
+
+  // Guarantee valid Gemini-supported MIME type
+  let safeMime = mimeType;
+  if (!safeMime || safeMime === 'application/octet-stream') {
+    const ext = path.extname(originalName).toLowerCase();
+    if (ext === '.pdf') safeMime = 'application/pdf';
+    else if (ext === '.jpg' || ext === '.jpeg') safeMime = 'image/jpeg';
+    else if (ext === '.png') safeMime = 'image/png';
+    else if (ext === '.webp') safeMime = 'image/webp';
+    else safeMime = 'application/pdf';
+  }
   const body = JSON.stringify({
     contents: [
       {

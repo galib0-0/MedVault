@@ -182,6 +182,20 @@ export default function AISummaryCard({ aiSummary = null, onUpload }) {
         <div style={{ background: '#fef2f2', color: '#dc2626', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', margin: '14px 0' }}>
           ⚠️ {transError}
         </div>
+      ) : aiSummary.isProcessing ? (
+        <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f0f9ff', borderRadius: '14px', border: '1.5px dashed #7dd3fc', margin: '14px 0' }}>
+          <div style={{ fontSize: '32px', animation: 'pulse 1.5s ease-in-out infinite', display: 'inline-block' }}>⚡</div>
+          <style>{`@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.8; } }`}</style>
+          <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#0369a1', margin: '12px 0 6px' }}>
+            AI Analysis in Progress...
+          </h4>
+          <p style={{ fontSize: '13px', color: '#0c4a6e', maxWidth: '480px', margin: '0 auto', lineHeight: '1.5' }}>
+            MedVault AI is currently analyzing <strong>{aiSummary.reportName}</strong> using Google Gemini. Extracting clinical observations, laboratory values, and treatment guidance.
+          </p>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '16px', fontSize: '12px', color: '#0284c7', background: '#e0f2fe', padding: '6px 14px', borderRadius: '20px', fontWeight: '600' }}>
+            <span style={{ animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>⏳</span> Auto-updating in a few moments...
+          </div>
+        </div>
       ) : (
         <>
           {lang !== 'English' && (

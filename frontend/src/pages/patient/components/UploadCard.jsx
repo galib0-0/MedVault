@@ -63,18 +63,22 @@ export default function UploadCard({ onComplete, onError }) {
 
     setStep(1);
     const cat = CATEGORIES.find((c) => c.id === category);
+    const targetId = String(record?.id || record?._id || '');
+    let attempts = 0;
 
     const poll = async () => {
+      attempts += 1;
       try {
         const records = await getRecords();
-        const latest = records.find((r) => r.id === record.id) || records[0];
+        const latest = records.find((r) => String(r.id || r._id) === targetId) || (records.length ? records[0] : null);
+
         if (latest && latest.aiStatus === 'ready') {
           setStep(STATUS_STEPS.length - 1);
           setBusy(false);
           toast(`"${file.name}" uploaded — AI summary is ready.`, 'success');
           if (onComplete) {
             onComplete({
-              id: record.id,
+              id: targetId || record.id,
               name: file.name,
               type: file.type,
               size: file.size,
@@ -83,22 +87,38 @@ export default function UploadCard({ onComplete, onError }) {
           }
           return;
         }
+
         if (latest && latest.aiStatus === 'failed') {
           setStep(STATUS_STEPS.length - 1);
           setBusy(false);
-          toast(`"${file.name}" uploaded, but AI summarization failed.`, 'info');
-          if (onComplete) onComplete({ id: record.id, name: file.name, type: file.type, size: file.size, category: cat ? cat.label : 'Other Documents' });
+          toast(`"${file.name}" uploaded, but AI summarization encountered an issue.`, 'info');
+          if (onComplete) onComplete({ id: targetId || record.id, name: file.name, type: file.type, size: file.size, category: cat ? cat.label : 'Other Documents' });
           return;
         }
-        window.setTimeout(poll, 2500);
+
+        if (attempts > 18) {
+          // Finish upload step and let background polling complete it
+          setStep(STATUS_STEPS.length - 1);
+          setBusy(false);
+          toast(`"${file.name}" uploaded safely. AI analysis is continuing in the background.`, 'info');
+          if (onComplete) onComplete({ id: targetId || record.id, name: file.name, type: file.type, size: file.size, category: cat ? cat.label : 'Other Documents' });
+          return;
+        }
+
+        window.setTimeout(poll, 2000);
       } catch {
-        setStep(1);
-        window.setTimeout(poll, 2500);
+        if (attempts > 18) {
+          setStep(STATUS_STEPS.length - 1);
+          setBusy(false);
+          if (onComplete) onComplete({ id: targetId || record.id, name: file.name });
+          return;
+        }
+        window.setTimeout(poll, 2000);
       }
     };
 
     setStep(2);
-    window.setTimeout(poll, 2500);
+    window.setTimeout(poll, 1500);
   };
 
   const onFiles = (list) => {

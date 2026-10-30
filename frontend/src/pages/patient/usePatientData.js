@@ -133,6 +133,22 @@ export function usePatientData(session) {
     };
   }, [isAdmin, tick]);
 
+  const records = serverRecords === null ? [] : serverRecords;
+  const recordsLoading = serverRecords === null;
+
+  const readyCount = records.filter((r) => r.aiStatus === 'ready').length;
+  const processingCount = records.filter((r) => r.aiStatus === 'processing').length;
+
+  // Auto-refresh when records are processing
+  useEffect(() => {
+    if (processingCount > 0) {
+      const pollTimer = setTimeout(() => {
+        refresh();
+      }, 2500);
+      return () => clearTimeout(pollTimer);
+    }
+  }, [processingCount, tick]);
+
   if (isAdmin) {
     return {
       isAdmin: true,
@@ -152,11 +168,6 @@ export function usePatientData(session) {
     };
   }
 
-  const records = serverRecords === null ? [] : serverRecords;
-  const recordsLoading = serverRecords === null;
-
-  const readyCount = records.filter((r) => r.aiStatus === 'ready').length;
-  const processingCount = records.filter((r) => r.aiStatus === 'processing').length;
   const last = records[0];
   const profile = profileFromSession(session);
   const age = ageFromDob(profile.dob);
@@ -176,6 +187,25 @@ export function usePatientData(session) {
       text: 'AI summary generated for your latest document',
       time: recordLabel(latestReady.createdAt),
     });
+  }
+
+  const mostRecent = records[0];
+  let resolvedSummary = null;
+  if (mostRecent && mostRecent.aiStatus === 'processing') {
+    resolvedSummary = {
+      id: mostRecent.id || mostRecent._id,
+      reportName: mostRecent.name,
+      generatedAt: 'Analyzing now...',
+      report: '',
+      summary: 'Your medical document has been securely uploaded and is being analyzed by MedVault AI using Google Gemini. Extracting lab values, reference ranges, and doctor impressions...',
+      finding: 'AI Analysis in progress...',
+      findingType: 'none',
+      recommendation: 'This card will automatically update once the analysis is ready.',
+      isProcessing: true,
+      source: 'processing',
+    };
+  } else {
+    resolvedSummary = summaryFromRecord(latestReady || mostRecent);
   }
 
   return {
@@ -201,7 +231,7 @@ export function usePatientData(session) {
       aiReady: readyCount,
       aiProcessing: processingCount,
     },
-    aiSummary: summaryFromRecord(latestReady),
+    aiSummary: resolvedSummary,
     dependents: serverDependents || [],
     vaccinations: vaccinationOverview || { overall: 0, items: [] },
     timeline: [],
