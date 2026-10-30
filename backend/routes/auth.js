@@ -208,6 +208,9 @@ router.post('/google', async (req, res) => {
     let picture = profilePhoto || '';
     let sub = googleId || '';
 
+    const DEFAULT_GOOGLE_CLIENT_ID = '1094871067975-vrrhfem71sseh67g6lsfugtdvq4e9k6c.apps.googleusercontent.com';
+    const expectedClientId = (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID.trim()) || DEFAULT_GOOGLE_CLIENT_ID;
+
     // If credential token from Google Identity Services is provided, verify it
     if (credential) {
       try {
@@ -216,7 +219,7 @@ router.post('/google', async (req, res) => {
         );
         if (verifyRes.ok) {
           const payload = await verifyRes.json();
-          if (process.env.GOOGLE_CLIENT_ID && payload.aud !== process.env.GOOGLE_CLIENT_ID) {
+          if (expectedClientId && payload.aud !== expectedClientId) {
             return res.status(401).json({ message: 'Google token audience mismatch.' });
           }
           email = sanitizeEmail(payload.email);

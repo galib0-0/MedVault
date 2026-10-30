@@ -1,5 +1,9 @@
 import { googleAuth } from './auth';
 
+export const GOOGLE_CLIENT_ID =
+  (import.meta.env.VITE_GOOGLE_CLIENT_ID && import.meta.env.VITE_GOOGLE_CLIENT_ID.trim()) ||
+  '1094871067975-vrrhfem71sseh67g6lsfugtdvq4e9k6c.apps.googleusercontent.com';
+
 /**
  * Triggers authentic Google OAuth 2.0 popup using Google Identity Services (GIS).
  * Opens Google's official 'Sign in with Google' popup (accounts.google.com).
@@ -7,15 +11,7 @@ import { googleAuth } from './auth';
  */
 export function promptGoogleLogin({ role = 'PATIENT', promptMode = 'select_account' } = {}) {
   return new Promise((resolve, reject) => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
-    if (!clientId || clientId.trim() === '') {
-      const err = new Error(
-        'Google Client ID is missing. Please add VITE_GOOGLE_CLIENT_ID in frontend/.env.'
-      );
-      err.code = 'MISSING_CLIENT_ID';
-      return reject(err);
-    }
+    const clientId = GOOGLE_CLIENT_ID;
 
     if (!window.google?.accounts?.oauth2) {
       const err = new Error(
