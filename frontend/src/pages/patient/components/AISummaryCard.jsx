@@ -211,18 +211,55 @@ export default function AISummaryCard({ aiSummary = null, onUpload, onTriggerSum
             <MarkdownBody content={aiSummary.report} />
           ) : (
             <>
-              <div className={styles.summaryBody}>
-                <p>{aiSummary.summary}</p>
-              </div>
-              <div className={`${styles.finding} ${findingType === 'warning' ? styles.findingWarn : styles.findingCrit}`}>
-                <span className={styles.findingIcon}>
-                  <AlertIcon />
-                </span>
-                <div>
-                  <strong>{aiSummary.finding}</strong>
-                  <p>{aiSummary.recommendation}</p>
+              {aiSummary.isFailed || aiSummary.source === 'error' || aiSummary.source === 'local' ? (
+                <div style={{
+                  padding: '16px 18px',
+                  backgroundColor: '#fef2f2',
+                  border: '1.5px solid #f87171',
+                  borderRadius: '12px',
+                  marginBottom: '16px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>⚠️</span>
+                    <strong style={{ fontSize: '15px', color: '#991b1b', fontWeight: '800' }}>
+                      {aiSummary.finding || 'AI Summarization Notice'}
+                    </strong>
+                  </div>
+                  <p style={{ margin: '0 0 10px', fontSize: '13.5px', color: '#7f1d1d', lineHeight: '1.5' }}>
+                    {aiSummary.summary}
+                  </p>
+                  {aiSummary.recommendation && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: '#fee2e2',
+                      color: '#991b1b',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      fontWeight: '600',
+                    }}>
+                      👉 {aiSummary.recommendation}
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className={styles.summaryBody}>
+                    <p>{aiSummary.summary}</p>
+                  </div>
+                  <div className={`${styles.finding} ${findingType === 'warning' ? styles.findingWarn : styles.findingCrit}`}>
+                    <span className={styles.findingIcon}>
+                      <AlertIcon />
+                    </span>
+                    <div>
+                      <strong>{aiSummary.finding}</strong>
+                      <p>{aiSummary.recommendation}</p>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {aiSummary.id && (!aiSummary.hasSummary || aiSummary.isFailed || aiSummary.source === 'local' || aiSummary.source === 'error' || aiSummary.source === 'none' || aiSummary.finding?.includes('unavailable') || aiSummary.finding?.includes('error')) && (
                 <div style={{

@@ -280,6 +280,14 @@ router.post('/:id/re-summarize', requireAuth, async (req, res) => {
       return res.status(404).json({ message: 'Record not found.' });
     }
 
+    try {
+      await fs.access(record.storagePath);
+    } catch {
+      return res.status(400).json({
+        message: 'The original file for this document is not stored on this server instance. Please delete and re-upload this document.',
+      });
+    }
+
     record.aiStatus = 'processing';
     await record.save();
 

@@ -15,186 +15,117 @@ function getModel() {
   return (process.env.GEMINI_MODEL && process.env.GEMINI_MODEL.trim()) || 'gemini-3-flash-preview';
 }
 
+function detectMimeType(buffer, originalName, fallbackMime) {
+  if (buffer && buffer.length >= 4) {
+    // PDF: %PDF
+    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+      return 'application/pdf';
+    }
+    // JPEG: 0xFF 0xD8 0xFF
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      return 'image/jpeg';
+    }
+    // PNG: 0x89 0x50 0x4E 0x47
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+      return 'image/png';
+    }
+    // WebP: RIFF...WEBP
+    if (
+      buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer.length >= 12 &&
+      buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+    ) {
+      return 'image/webp';
+    }
+  }
+
+  const ext = path.extname(originalName || '').toLowerCase();
+  if (ext === '.pdf') return 'application/pdf';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+
+  if (fallbackMime && fallbackMime.startsWith('image/')) {
+    return fallbackMime === 'image/jpg' ? 'image/jpeg' : fallbackMime;
+  }
+  return 'application/pdf';
+}
+
 function buildPrompt({ originalName, category, mimeType }) {
-  return `You are the Medical Report Analysis AI for MedVault AI, a patient-focused digital healthcare platform.
+  return `You are the Expert Medical Document Analysis AI for MedVault AI, a digital healthcare platform.
 
 Document details:
 - File name: ${originalName}
 - Category: ${category}
-- Type: ${mimeType}
+- Document Type: ${mimeType}
 
-Your task is to carefully analyze the ENTIRE medical report, including:
-- Laboratory test results
-- Reference ranges
-- Doctor's observations
-- Clinical impressions or diagnoses
-- Radiology/imaging findings
-- Risk scores
-- Recommendations already present in the report
+INSTRUCTIONS FOR ALL MEDICAL DOCUMENTS (TYPED & HANDWRITTEN):
+1. Carefully inspect the entire document regardless of whether it is typed or handwritten:
+   - If it is a doctor prescription or clinical note (handwritten or typed):
+     * Decipher the handwriting, clinic/hospital header, doctor details, and Latin shorthand (OD, BD, TDS, HS, AC, PC, SOS, 1-0-1, etc.).
+     * Extract all prescribed medicines with brand name, dosage, frequency, food timing, duration, instructions, and clinical purpose into the "medications" array.
+     * Include a clear medication schedule table in the report.
+   - If it is a laboratory or diagnostic test report:
+     * Compare every reported parameter with its provided reference range.
+     * Identify and group abnormal, borderline, and normal results.
+     * Extract all doctor impressions, clinical observations, and diagnosis notes.
+   - If it is an imaging, radiology scan, or discharge document:
+     * Summarize key findings, hospital course, and discharge instructions.
 
-CRITICAL: Analyze the entire report. Do NOT only identify the headline abnormalities.
-1. Compare every reported value with its provided reference range.
-2. Identify every value that is above, below, marked abnormal/high/low/borderline/positive, or otherwise clinically significant.
-3. Extract all doctor impressions, diagnoses, observations, and recommendations.
-4. Extract all imaging or radiology findings.
-5. Extract any risk scores or health assessment scores.
-6. Identify important normal findings to provide reassurance.
-7. Do not ignore a finding simply because it is less severe than another abnormal result.
-If the report contains an abnormal value, it must either be included in the summary OR grouped with related findings under an appropriate category. Never silently omit an abnormal result.
+2. Accuracy & Completeness:
+   - Do NOT skip abnormal values or omit findings.
+   - Do NOT invent values or reference ranges not present in the document.
+   - Use simple, compassionate, patient-friendly language.
+   - If handwritten text is ambiguous, provide the most plausible deciphering with a note to verify with a pharmacist.
 
 Return a JSON object ONLY (no markdown fences, no extra text) with this exact shape:
 {
   "report": "A COMPLETE markdown document (see REQUIRED OUTPUT STRUCTURE below) for the patient.",
-  "finding": "The single most important clinical finding to highlight in the summary box, or 'No significant findings'.",
+  "finding": "The single most important clinical finding or diagnosis to highlight in the summary box.",
   "findingType": "one of 'critical', 'warning', or 'none'",
   "recommendation": "A practical next step to share with a doctor (1-2 sentences).",
-  "critical": true or false
-}
-
-REQUIRED OUTPUT STRUCTURE — the "report" field MUST follow this structure exactly, in order:
-
-## 1. OVERALL HEALTH SUMMARY
-Short, simple overview: most important findings, main health areas requiring attention, important positive/normal findings. Simple language for a non-medical person.
-
-## 2. 🔴 REQUIRES ACTION — IMPORTANT FINDINGS
-Findings that may require timely medical attention, specialist review, follow-up, or treatment. For EACH finding provide: Finding; Actual Value / Result; Reference Range (only if in the report); What it means; Why it matters; Recommended next step. Use a "### [Condition Name]" sub-heading per finding. Do NOT invent reference ranges.
-
-## 3. 🟡 NEEDS ATTENTION — ABNORMAL OR BORDERLINE FINDINGS
-Every remaining abnormal or borderline parameter (blood values, lipids, blood indices, kidney values, metabolic values, anything outside the report's reference range). For each: Test name, Actual value, Reference range, High/Low/Borderline status, Simple explanation. Use a markdown table with columns: Test | Result | Reference Range | Status | Simple Meaning. Group related findings. Do not omit minor abnormalities.
-
-## 4. DOCTOR'S CLINICAL IMPRESSIONS AND DIAGNOSES
-All clinical impressions, diagnoses, observations explicitly mentioned in the report. For each use "### [Condition Name]" with: Reported Impression; Simple Explanation; Importance; Suggested Follow-up. If Bilateral Carotid Plaques or another significant cardiovascular finding is explicitly mentioned, clearly highlight it and recommend appropriate medical evaluation—do not hide it among minor findings.
-
-## 5. 🧠 HEART AND CARDIOVASCULAR HEALTH
-Dedicated section for blood pressure, cholesterol, LDL, HDL, triglycerides, VLDL, carotid findings, ECG findings, cardiac risk scores, any cardiovascular observations. Clearly connect related findings. Do not diagnose additional diseases not stated in the report.
-
-## 6. 🧪 RISK SCORES AND HEALTH ASSESSMENTS
-All AI-generated, clinical, or health risk scores present in the report. For each: Name of the risk assessment; Score or percentage; Risk category exactly as stated; Simple explanation. Include a caution that risk scores are assessments and do not guarantee a disease is or is not present.
-
-## 7. 🟢 NORMAL AND REASSURING FINDINGS
-Key health parameters within the report's normal range. Summarize key normal areas (e.g., liver function, kidney function, thyroid function, blood counts, blood sugar). Do NOT list every single normal test. Use "### 🟢 [System]" sub-headings. Only call a result normal if it is actually within the reference range provided in the report.
-
-## 8. URGENT OR PRIORITY FOLLOW-UP
-Prioritized action list with three sub-sections:
-- "### 🔴 Priority Follow-up" — findings requiring timely medical evaluation.
-- "### 🟡 Follow-up Recommended" — abnormalities to discuss at a medical consultation.
-- "### 🟢 Continue Healthy Monitoring" — normal or stable areas.
-Suggest the relevant type of specialist where appropriate (e.g., "Consider discussing this with a cardiologist or your treating physician for further evaluation."). Do not present specialist referral as confirmed medical necessity unless the report explicitly states it.
-
-## 9. LIFESTYLE AND GENERAL HEALTH RECOMMENDATIONS
-General wellness recommendations relevant to the findings: balanced diet, reducing excess sugar intake, physical activity appropriate to the condition, weight management where relevant, blood pressure monitoring, lipid management, follow-up testing, adequate sunlight/nutrition, avoiding smoking/tobacco where applicable. Do NOT prescribe medications, provide medication dosages, or tell the patient to start/stop medication. Clearly distinguish general wellness recommendations from medical treatment.
-
-End the report with:
-
----
-### ⚠️ Important Disclaimer
-This summary was generated by MedVault AI using automated analysis of the uploaded medical report. It is intended to help you understand and organize your health information but does not replace a qualified doctor's diagnosis, examination, or medical advice. Always discuss abnormal results, symptoms, and treatment decisions with a licensed healthcare professional.
-
-SEVERITY INDICATORS — use consistently throughout the report:
-- 🔴 Requires Action: potentially significant findings needing timely attention or follow-up.
-- 🟡 Needs Attention: abnormal, borderline, or non-urgent findings to monitor or discuss.
-- 🟢 Normal / Reassuring: important results within the stated normal range.
-Do not exaggerate severity. Do not label a finding as an emergency unless the report or result clearly supports that conclusion.
-
-ACCURACY / COMPLETENESS RULES:
-1. Do not skip abnormal values.
-2. Do not invent missing values or diagnoses.
-3. Do not invent reference ranges.
-4. Do not claim something is normal if it is outside the report's reference range.
-5. Do not ignore doctor's impressions or imaging findings.
-6. Do not ignore risk scores.
-7. Include important normal findings too.
-8. Use simple, patient-friendly language.
-9. If information is unclear or unreadable, explicitly state that it could not be confidently interpreted.
-10. Preserve actual values exactly as present in the report.
-11. Compare every value against the reference ranges provided in the report whenever available.
-12. Be calm and non-alarming; write as markdown with clear headings, bullet points, and tables where useful.
-
-"finding": the single most important immediate result to highlight; set findingType to 'critical' when a genuinely urgent finding exists (e.g., dangerously abnormal vital or lab result), otherwise 'warning' or 'none'. "critical" is true only when there is a genuinely urgent finding.`;
-}
-
-function buildPrescriptionPrompt({ originalName, mimeType }) {
-  return `You are the Expert Prescription OCR & Clinical Pharmacologist AI for MedVault AI.
-You specialize in reading handwritten doctor prescriptions, clinic orders, and pharmacy slips.
-
-Document details:
-- File name: ${originalName}
-- Document Type: Prescription / Clinical Medication Order (${mimeType})
-
-YOUR CLINICAL OCR TASKS:
-1. DECIPHER HANDWRITING & LATIN SHORTHAND:
-   - Carefully read the doctor's handwriting, clinic/hospital letterhead, doctor registration number, diagnosis, complaints, and Rx items.
-   - Decode all medical/Latin abbreviations into plain, patient-friendly language:
-     * OD -> Once daily
-     * BD / BID -> Twice daily
-     * TDS / TID -> Three times daily
-     * QID -> Four times daily
-     * HS -> At bedtime
-     * AC -> Before food / meals
-     * PC -> After food / meals
-     * SOS -> As needed / only when necessary
-     * Stat -> Immediately
-     * 1-0-1 -> Morning and Night
-     * 1-1-1 -> Morning, Afternoon, and Night
-     * 1-0-0 -> Morning only
-     * 0-0-1 -> Night only
-
-2. EXTRACT STRUCTURED MEDICATIONS:
-   - For every prescribed medicine, extract:
-     * "name": Brand name and Generic name (e.g. "Augmentin 625mg (Amoxicillin + Clavulanate)")
-     * "dosage": Strength/form (e.g. "625mg Tablet", "5ml Syrup")
-     * "frequency": Dosage schedule (e.g. "Twice daily (1-0-1)")
-     * "timing": Relation to food (e.g. "After meals (PC)", "Before meals (AC)")
-     * "duration": Duration (e.g. "5 days", "1 month")
-     * "instructions": Plain language instructions (e.g. "Take with water. Do not skip doses.")
-     * "purpose": Clinical purpose/indication (e.g. "Bacterial infection", "Blood pressure control")
-
-3. SAFETY PRECAUTIONS & COURSE WARNINGS:
-   - Highlight any antibiotic course completion rules, side effects, or drug interactions.
-
-Return a JSON object ONLY (no markdown fences, no extra text) with this exact shape:
-{
-  "report": "A complete markdown document explaining the prescription in plain language (see REQUIRED STRUCTURE below).",
-  "finding": "Primary diagnosis or key prescribed therapy (e.g. 'Prescribed 5-day antibiotic course for acute respiratory tract infection')",
-  "findingType": "one of 'warning' or 'none'",
-  "recommendation": "Key patient guidance (e.g. 'Complete the full 5-day course as prescribed and follow up if fever persists.').",
-  "critical": false,
+  "critical": true or false,
   "medications": [
     {
       "name": "Medicine Name",
       "dosage": "Strength / Form",
-      "frequency": "Frequency",
-      "timing": "Food Timing",
-      "duration": "Duration",
+      "frequency": "Frequency (e.g. Twice daily)",
+      "timing": "Food Timing (e.g. After food)",
+      "duration": "Duration (e.g. 5 days)",
       "instructions": "Patient Instructions",
-      "purpose": "Clinical Purpose"
+      "purpose": "Clinical Indication"
     }
   ]
 }
 
 REQUIRED OUTPUT STRUCTURE for "report":
-## 1. 📋 PRESCRIPTION OVERVIEW & DIAGNOSIS
-- Prescribing Doctor / Clinic: (Doctor name, qualifications, clinic if visible)
-- Diagnosis / Symptoms Noted: (Stated diagnosis or reason for consultation)
-- Date of Prescription: (Date if visible)
+## 1. OVERALL HEALTH SUMMARY
+Plain-language overview of the document: key findings, reason for visit/test, or primary diagnosis.
 
-## 2. 💊 DECIPHERED MEDICATIONS & DOSAGE SCHEDULE
-Present a clear, easy-to-read markdown table of all medications:
-| Medicine | Strength / Form | Frequency | Food Timing | Duration | Purpose |
-|---|---|---|---|---|---|
-(Include all deciphered medicines with their decoded abbreviations)
+## 2. 🔴 REQUIRES ACTION — IMPORTANT FINDINGS
+Any abnormal results, severe findings, or urgent clinical instructions.
 
-## 3. ⚠️ IMPORTANT PATIENT INSTRUCTIONS & SAFETY
-- Specific instructions for each medication (e.g. empty stomach, finish antibiotic course).
-- Precautions (avoid alcohol, stay hydrated, etc.).
+## 3. 🟡 NEEDS ATTENTION — ABNORMAL OR BORDERLINE FINDINGS
+Table of abnormal parameters (or doctor's secondary observations):
+Test/Observation | Result | Reference Range | Status | Clinical Meaning
 
-## 4. 🩺 FOLLOW-UP & RED FLAGS
-- When to see the doctor again.
-- Symptoms requiring immediate medical attention.
+## 4. 💊 MEDICATIONS & TREATMENT SCHEDULE (if applicable)
+If any medications or treatments are prescribed (typed or handwritten), provide a clear schedule table:
+Medicine | Strength | Frequency | Food Timing | Duration | Purpose
+
+## 5. 🟢 NORMAL AND REASSURING FINDINGS
+Summary of normal tests, stable findings, or reassuring clinical indicators.
+
+## 6. URGENT OR PRIORITY FOLLOW-UP
+Next steps, recommended doctor consultations, and tests to repeat.
 
 ---
 ### ⚠️ Important Disclaimer
-This prescription analysis was generated by MedVault AI using automated handwriting OCR. Always verify medications with your pharmacist and follow your doctor's exact instructions.`;
+This summary was generated by MedVault AI using automated medical document analysis. It is intended to help you understand and organize your health information but does not replace a qualified doctor's diagnosis, examination, or medical advice. Always consult a licensed healthcare professional.`;
+}
+
+function buildPrescriptionPrompt({ originalName, mimeType }) {
+  return buildPrompt({ originalName, category: 'Prescriptions', mimeType });
 }
 
 function parseJSON(text) {
@@ -222,12 +153,14 @@ function parseJSON(text) {
 function localSummary({ originalName, category }) {
   const base = originalName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
   return {
-    summary: `This is a ${category.toLowerCase()} document named "${base}". We could not connect to the AI service, so this is a locally generated placeholder summary. Please re-run summarization when the AI service is available.`,
-    finding: 'Summary pending — AI service unavailable',
-    findingType: 'none',
-    recommendation: 'Try uploading again later, or ask your doctor to review the document.',
+    report: '',
+    summary: `GEMINI_API_KEY is not configured on the backend hosting server. If deployed to Render, please add GEMINI_API_KEY into your Render Dashboard (Environment -> Environment Variables).`,
+    finding: 'Gemini API Key Missing on Server',
+    findingType: 'warning',
+    recommendation: 'Add GEMINI_API_KEY to Render Environment Variables and click retry.',
     critical: false,
-    source: 'local',
+    source: 'error',
+    errorDetails: 'Missing GEMINI_API_KEY in process.env',
   };
 }
 
@@ -239,9 +172,7 @@ async function callWithRetry(body, attempt = 0) {
   const apiKey = getApiKey();
   const candidateModels = [
     'gemini-3-flash-preview',
-    'gemini-flash-lite-latest',
-    'gemini-flash-latest',
-    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite-preview',
   ];
   const primaryModel = getModel();
   const models = [primaryModel, ...candidateModels].filter((m, i, arr) => arr.indexOf(m) === i);
@@ -252,7 +183,7 @@ async function callWithRetry(body, attempt = 0) {
   let json;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 40000);
+    const timeout = setTimeout(() => controller.abort(), 35000);
     res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -267,39 +198,54 @@ async function callWithRetry(body, attempt = 0) {
   } catch (netErr) {
     console.warn(`[Gemini API] Network/Timeout error on model ${model} (attempt ${attempt}):`, netErr.message);
     if (attempt < models.length * 2 - 1) {
-      await sleep(1000 * (attempt + 1));
+      await sleep(1500 * (attempt + 1));
       return callWithRetry(body, attempt + 1);
     }
-    throw netErr;
+    const err = new Error(
+      netErr.name === 'AbortError'
+        ? `Request to Google Gemini timed out after 35 seconds on ${model}.`
+        : `Network connection to Google Gemini failed: ${netErr.message}`
+    );
+    err.status = 504;
+    throw err;
   }
 
   if (res.ok) return json;
 
-  console.warn(`[Gemini API] Model ${model} returned ${res.status}:`, json?.error?.message || res.statusText);
+  const errMsg = json?.error?.message || res.statusText || `HTTP ${res.status}`;
+  console.warn(`[Gemini API] Model ${model} returned ${res.status}:`, errMsg);
 
   const retryable =
     res.status === 429 ||
     res.status === 503 ||
-    res.status === 404 ||
     json?.error?.status === 'UNAVAILABLE' ||
-    json?.error?.status === 'RESOURCE_EXHAUSTED' ||
-    json?.error?.status === 'NOT_FOUND';
+    json?.error?.status === 'RESOURCE_EXHAUSTED';
 
   if (retryable && attempt < models.length * 2 - 1) {
-    await sleep(1000 * (attempt + 1));
+    await sleep(2000 * (attempt + 1));
     return callWithRetry(body, attempt + 1);
   }
 
-  const err = new Error(json?.error?.message || `Gemini API error ${res.status}`);
+  let formattedMessage = errMsg;
+  if (res.status === 429 || json?.error?.status === 'RESOURCE_EXHAUSTED') {
+    formattedMessage = `Gemini API rate limit or free-tier quota exceeded (429). Please wait a moment before retrying.`;
+  } else if (res.status === 403 || json?.error?.status === 'PERMISSION_DENIED') {
+    formattedMessage = `Gemini API Key rejected by Google (403 Permission Denied): ${errMsg}`;
+  } else if (res.status === 404 || json?.error?.status === 'NOT_FOUND') {
+    formattedMessage = `Gemini model ${model} was not found (404): ${errMsg}`;
+  }
+
+  const err = new Error(formattedMessage);
   err.status = res.status;
+  err.details = json?.error;
   throw err;
 }
 
 export async function summarizeRecord({ filePath, originalName, category, mimeType }) {
   const apiKey = getApiKey();
   if (!apiKey) {
-    console.warn('[Gemini] No GEMINI_API_KEY detected. Returning placeholder summary.');
-    return { ...localSummary({ originalName, category }), source: 'local' };
+    console.warn('[Gemini] No GEMINI_API_KEY detected. Returning error.');
+    return { ...localSummary({ originalName, category }), source: 'error' };
   }
 
   let fileData;
@@ -307,34 +253,30 @@ export async function summarizeRecord({ filePath, originalName, category, mimeTy
     fileData = await fs.readFile(filePath);
   } catch (err) {
     return {
-      summary: `The uploaded file could not be read for summarization (${err.message}).`,
-      finding: 'Unable to read file',
-      findingType: 'none',
-      recommendation: 'Re-upload the document in PDF or common image format.',
+      report: '',
+      summary: `The uploaded document could not be accessed on this server instance (${err.message}). If the document was uploaded to a cloud container that restarted or a different host, please re-upload the file.`,
+      finding: 'Original File Not Found On Server',
+      findingType: 'warning',
+      recommendation: 'Please delete and re-upload the document in PDF, JPEG, or PNG format.',
       critical: false,
       source: 'error',
+      errorDetails: err.message,
     };
   }
 
   const isPrescription =
     (category && category.toLowerCase().includes('prescription')) ||
     originalName.toLowerCase().includes('prescription') ||
-    originalName.toLowerCase().includes('rx');
+    originalName.toLowerCase().includes('rx') ||
+    originalName.toLowerCase().includes('whatsapp');
 
   const prompt = isPrescription
     ? buildPrescriptionPrompt({ originalName, mimeType })
     : buildPrompt({ originalName, category, mimeType });
 
-  // Guarantee valid Gemini-supported MIME type
-  let safeMime = mimeType;
-  if (!safeMime || safeMime === 'application/octet-stream') {
-    const ext = path.extname(originalName).toLowerCase();
-    if (ext === '.pdf') safeMime = 'application/pdf';
-    else if (ext === '.jpg' || ext === '.jpeg') safeMime = 'image/jpeg';
-    else if (ext === '.png') safeMime = 'image/png';
-    else if (ext === '.webp') safeMime = 'image/webp';
-    else safeMime = 'application/pdf';
-  }
+  // Guarantee valid Gemini-supported MIME type using actual buffer magic bytes
+  const safeMime = detectMimeType(fileData, originalName, mimeType);
+
   const body = JSON.stringify({
     contents: [
       {
@@ -369,10 +311,11 @@ export async function summarizeRecord({ filePath, originalName, category, mimeTy
 
     if (!parsed) {
       return {
-        summary: 'We received a response from the AI but could not parse it. Please retry.',
-        finding: 'Summary could not be generated',
-        findingType: 'none',
-        recommendation: 'Try uploading again later.',
+        report: '',
+        summary: 'We received a response from Google Gemini but could not parse the structured clinical output. Click below to retry.',
+        finding: 'Summary Parsing Error',
+        findingType: 'warning',
+        recommendation: 'Click retry to re-analyze with Gemini.',
         critical: false,
         source: 'error',
       };
@@ -393,13 +336,36 @@ export async function summarizeRecord({ filePath, originalName, category, mimeTy
     };
   } catch (err) {
     console.error('[Gemini Summarize Error]:', err.message);
+
+    let findingHeadline = 'AI Analysis Encountered An Issue';
+    let rec = 'Click below to re-run AI summarization with Google Gemini.';
+
+    if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED') || err.message?.includes('rate limit')) {
+      findingHeadline = 'Gemini Rate Limit / Quota Exceeded (429)';
+      rec = 'Google Gemini free-tier rate limit reached. Please wait 30 seconds and click retry.';
+    } else if (err.message?.includes('403') || err.message?.includes('PERMISSION_DENIED')) {
+      findingHeadline = 'Gemini API Key Unauthorized (403)';
+      rec = 'Verify your GEMINI_API_KEY in Google AI Studio or check Render Environment Variables.';
+    } else if (err.message?.includes('404')) {
+      findingHeadline = 'Gemini Model Unavailable (404)';
+      rec = 'The requested AI model was not found. Retrying with gemini-3-flash-preview.';
+    } else if (err.message?.includes('timed out')) {
+      findingHeadline = 'AI Analysis Timed Out';
+      rec = 'The document took longer than 35s to analyze. Click retry to process again.';
+    } else if (err.message?.includes('no pages') || err.message?.includes('document')) {
+      findingHeadline = 'Document Content Unreadable';
+      rec = 'The document appears to be empty or corrupted. Please verify the uploaded file.';
+    }
+
     return {
-      summary: `AI summarization failed (${err.message}). The file is stored safely in your vault.`,
-      finding: 'AI service error',
-      findingType: 'none',
-      recommendation: 'Retry summarization, or ask your doctor to review the document.',
+      report: '',
+      summary: `AI summarization could not be completed: ${err.message}`,
+      finding: findingHeadline,
+      findingType: 'warning',
+      recommendation: rec,
       critical: false,
       source: 'error',
+      errorDetails: err.message,
     };
   }
 }

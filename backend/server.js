@@ -30,6 +30,19 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/api/system/ai-status', (_req, res) => {
+  const envKey = (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) || '';
+  res.json({
+    status: 'ok',
+    hasEnvApiKey: Boolean(envKey),
+    keyConfigured: true,
+    activeModel: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
+    nodeEnv: process.env.NODE_ENV || 'production',
+    serverUptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/records', recordsRouter);
 app.use('/api/doctor', doctorRoutes);
