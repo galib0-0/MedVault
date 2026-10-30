@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import * as demo from './data';
 import { getRecords } from '../../lib/records';
 import { getDependents } from '../../lib/dependents';
+import { BASE_URL } from '../../lib/api';
 
 function list(value) {
   if (!value) return [];
@@ -66,6 +67,11 @@ function recordLabel(date) {
 
 function summaryFromRecord(record) {
   if (!record || !record.aiSummary) return null;
+  const fileUrl = record.fileUrl
+    ? record.fileUrl.startsWith('http')
+      ? record.fileUrl
+      : `${BASE_URL.replace(/\/api$/, '')}${record.fileUrl}`
+    : null;
   return {
     id: record.id || record._id,
     reportName: record.name,
@@ -77,7 +83,7 @@ function summaryFromRecord(record) {
     recommendation: record.aiSummary.recommendation || '',
     medications: record.aiSummary.medications || [],
     isPrescription: Boolean(record.aiSummary.isPrescription),
-    fileUrl: record.fileUrl || null,
+    fileUrl,
     disclaimer: 'AI-generated summary for easier understanding. Please consult a qualified healthcare professional for medical advice.',
     source: record.aiSummary.source || 'gemini',
   };

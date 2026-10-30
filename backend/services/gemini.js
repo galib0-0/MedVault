@@ -1,11 +1,19 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 
-const API_KEY = process.env.GEMINI_API_KEY || '';
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
-const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-flash-lite-latest'].filter(
-  (m) => m !== MODEL
-);
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config();
+
+function getApiKey() {
+  return (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) || '';
+}
+
+function getModel() {
+  return (process.env.GEMINI_MODEL && process.env.GEMINI_MODEL.trim()) || 'gemini-flash-latest';
+}
 
 function buildPrompt({ originalName, category, mimeType }) {
   return `You are the Medical Report Analysis AI for MedVault AI, a patient-focused digital healthcare platform.
@@ -228,15 +236,18 @@ function sleep(ms) {
 }
 
 async function callWithRetry(body, attempt = 0) {
-  const models = [MODEL, ...FALLBACK_MODELS];
+  const apiKey = getApiKey();
+  const primaryModel = getModel();
+  const candidateModels = [primaryModel, 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-flash-lite-latest'];
+  const models = candidateModels.filter((m, i, arr) => arr.indexOf(m) === i);
   const model = models[attempt % models.length];
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-goog-api-key': API_KEY,
+      'x-goog-api-key': apiKey,
     },
     body,
   });
@@ -244,14 +255,18 @@ async function callWithRetry(body, attempt = 0) {
 
   if (res.ok) return json;
 
+  console.warn(`[Gemini API] Model ${model} returned ${res.status}:`, json?.error?.message || res.statusText);
+
   const retryable =
     res.status === 429 ||
     res.status === 503 ||
+    res.status === 404 ||
     json?.error?.status === 'UNAVAILABLE' ||
-    json?.error?.status === 'RESOURCE_EXHAUSTED';
+    json?.error?.status === 'RESOURCE_EXHAUSTED' ||
+    json?.error?.status === 'NOT_FOUND';
 
   if (retryable && attempt < models.length * 2 - 1) {
-    await sleep(1500 * (attempt + 1));
+    await sleep(1200 * (attempt + 1));
     return callWithRetry(body, attempt + 1);
   }
 
@@ -261,7 +276,9 @@ async function callWithRetry(body, attempt = 0) {
 }
 
 export async function summarizeRecord({ filePath, originalName, category, mimeType }) {
-  if (!API_KEY) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.warn('[Gemini] No GEMINI_API_KEY detected. Returning placeholder summary.');
     return { ...localSummary({ originalName, category }), source: 'local' };
   }
 
@@ -343,6 +360,7 @@ export async function summarizeRecord({ filePath, originalName, category, mimeTy
       source: 'gemini',
     };
   } catch (err) {
+    console.error('[Gemini Summarize Error]:', err.message);
     return {
       summary: `AI summarization failed (${err.message}). The file is stored safely in your vault.`,
       finding: 'AI service error',
@@ -363,7 +381,8 @@ export async function translateMedicalReport({ text, targetLanguage }) {
     return text;
   }
 
-  if (!API_KEY) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
     return `[${targetLanguage} Translation]\n\n*(AI service is in local mode. Live regional translations activate with GEMINI_API_KEY)*\n\n${text}`;
   }
 

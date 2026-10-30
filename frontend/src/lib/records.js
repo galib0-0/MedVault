@@ -1,4 +1,4 @@
-import { api, tokenFromSession } from './api';
+import { api, tokenFromSession, BASE_URL } from './api';
 
 export async function getRecords() {
   const token = tokenFromSession();
@@ -14,7 +14,7 @@ export async function uploadRecord({ file, category }) {
 
   let res;
   try {
-    res = await fetch('/api/records', {
+    res = await fetch(`${BASE_URL}/records`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -64,6 +64,14 @@ export async function translateRecordSummary({ text, language, recordId }) {
 export async function syncMedications(recordId) {
   const token = tokenFromSession();
   return api(`/records/${recordId}/sync-medications`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export async function reSummarizeRecord(recordId) {
+  const token = tokenFromSession();
+  return api(`/records/${recordId}/re-summarize`, {
     method: 'POST',
     token,
   });

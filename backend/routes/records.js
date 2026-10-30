@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import multer from 'multer';
 import { requireAuth } from '../middleware/auth.js';
@@ -26,14 +27,20 @@ const CATEGORY_LABELS = {
 const MAX_BYTES = 25 * 1024 * 1024;
 
 function storageForUser(userId) {
-  const dir = path.join(UPLOAD_ROOT, String(userId));
   return multer.diskStorage({
     destination: async (_req, _file, cb) => {
+      const dir = path.join(UPLOAD_ROOT, String(userId));
       try {
         await fs.mkdir(dir, { recursive: true });
         cb(null, dir);
       } catch (err) {
-        cb(err);
+        try {
+          const fallback = path.join(os.tmpdir(), 'medvault-uploads', String(userId));
+          await fs.mkdir(fallback, { recursive: true });
+          cb(null, fallback);
+        } catch (fallbackErr) {
+          cb(err);
+        }
       }
     },
     filename: (_req, file, cb) => {
@@ -221,6 +228,43 @@ router.get('/:id', requireAuth, async (req, res) => {
     res.json({ record });
   } catch {
     res.status(500).json({ message: 'Failed to load record.' });
+  }
+});
+
+// POST /api/records/:id/re-summarize - Re-trigger AI summarization with Gemini
+router.post('/:id/re-summarize', requireAuth, async (req, res) => {
+  try {
+    const record = await Record.findOne({ _id: req.params.id, user: req.user._id });
+    if (!record) {
+      return res.status(404).json({ message: 'Record not found.' });
+    }
+
+    record.aiStatus = 'processing';
+    await record.save();
+
+    summarizeRecord({
+      filePath: record.storagePath,
+      originalName: record.originalName,
+      category: record.category,
+      mimeType: record.mimeType,
+    }).then(async (summary) => {
+      try {
+        await Record.updateOne(
+          { _id: record._id },
+          {
+            aiStatus: summary.source === 'error' ? 'failed' : 'ready',
+            aiSummary: summary,
+            critical: Boolean(summary.critical),
+          }
+        );
+      } catch {
+        /* background update failure is non-fatal */
+      }
+    });
+
+    res.json({ message: 'Summarization started.', record });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to trigger summarization.' });
   }
 });
 

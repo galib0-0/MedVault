@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { GoogleIcon, XCloseIcon } from './icons';
 import { useToast } from './Toast';
+import { BASE_URL } from '../lib/api';
 import styles from './GoogleSetupModal.module.css';
 
 export default function GoogleSetupModal({ open, onClose, onSaved }) {
@@ -20,7 +21,7 @@ export default function GoogleSetupModal({ open, onClose, onSaved }) {
 
     setSaving(true);
     try {
-      const res = await fetch('/api/auth/save-google-client-id', {
+      const res = await fetch(`${BASE_URL}/auth/save-google-client-id`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: clean }),

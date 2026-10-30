@@ -9,7 +9,7 @@ import {
 } from '../../../components/icons.jsx';
 import styles from '../patient.module.css';
 import MarkdownBody from './MarkdownBody';
-import { translateRecordSummary, syncMedications } from '../../../lib/records';
+import { translateRecordSummary, syncMedications, reSummarizeRecord } from '../../../lib/records';
 import { useToast } from '../../../components/Toast';
 
 const LANGS = ['English', 'Telugu', 'Hindi', 'Tamil', 'Kannada', 'Malayalam', 'Bengali', 'Marathi'];
@@ -22,6 +22,22 @@ export default function AISummaryCard({ aiSummary = null, onUpload }) {
   const [isTranslating, setIsTranslating] = useState(false);
   const [transError, setTransError] = useState('');
   const [syncingMeds, setSyncingMeds] = useState(false);
+  const [reSummarizing, setReSummarizing] = useState(false);
+
+  const handleReSummarize = async () => {
+    if (!aiSummary?.id) return;
+    setReSummarizing(true);
+    try {
+      await reSummarizeRecord(aiSummary.id);
+      toast('Generating full AI summary with Google Gemini. Updating now...', 'info');
+      setTimeout(() => {
+        window.location.reload();
+      }, 4000);
+    } catch (err) {
+      toast(err.message || 'Failed to trigger Gemini summarization.', 'error');
+      setReSummarizing(false);
+    }
+  };
 
   const handleSyncMeds = async () => {
     if (!aiSummary?.id) return;
@@ -192,6 +208,51 @@ export default function AISummaryCard({ aiSummary = null, onUpload }) {
                   <p>{aiSummary.recommendation}</p>
                 </div>
               </div>
+
+              {aiSummary.id && (aiSummary.source === 'local' || aiSummary.source === 'error' || aiSummary.finding?.includes('unavailable') || aiSummary.finding?.includes('error')) && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+                  borderRadius: '12px',
+                  border: '1.5px solid #93c5fd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                }}>
+                  <div style={{ minWidth: '240px' }}>
+                    <strong style={{ fontSize: '13.5px', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>✨ MedVault AI Service Ready</span>
+                    </strong>
+                    <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0 0' }}>
+                      Analyze complete laboratory parameters, reference ranges, and doctor impressions with Google Gemini.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleReSummarize}
+                    disabled={reSummarizing}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '9px 18px',
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      cursor: reSummarizing ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)',
+                    }}
+                  >
+                    {reSummarizing ? '⚡ Generating with Gemini...' : '⚡ Generate Full AI Summary with Gemini'}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </>
