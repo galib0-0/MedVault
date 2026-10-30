@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import User from '../models/User.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
 
@@ -197,6 +198,106 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// POST /api/auth/google - Authenticate or register with Google OAuth
+router.post('/google', async (req, res) => {
+  try {
+    const { credential, accessToken, email: bodyEmail, fullName: bodyName, role: requestedRole, profilePhoto, googleId } = req.body || {};
+
+    let email = bodyEmail ? sanitizeEmail(bodyEmail) : '';
+    let fullName = bodyName ? String(bodyName).trim() : '';
+    let picture = profilePhoto || '';
+    let sub = googleId || '';
+
+    // If credential token from Google Identity Services is provided, verify it
+    if (credential) {
+      try {
+        const verifyRes = await fetch(
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`
+        );
+        if (verifyRes.ok) {
+          const payload = await verifyRes.json();
+          if (process.env.GOOGLE_CLIENT_ID && payload.aud !== process.env.GOOGLE_CLIENT_ID) {
+            return res.status(401).json({ message: 'Google token audience mismatch.' });
+          }
+          email = sanitizeEmail(payload.email);
+          fullName = payload.name || fullName || email.split('@')[0];
+          picture = payload.picture || picture;
+          sub = payload.sub || sub;
+        } else {
+          return res.status(401).json({ message: 'Invalid Google authentication token.' });
+        }
+      } catch (tokenErr) {
+        return res.status(500).json({ message: 'Failed to verify Google token with Google servers.' });
+      }
+    } else if (accessToken) {
+      try {
+        const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (infoRes.ok) {
+          const payload = await infoRes.json();
+          email = sanitizeEmail(payload.email);
+          fullName = payload.name || fullName || email.split('@')[0];
+          picture = payload.picture || picture;
+          sub = payload.sub || sub;
+        } else {
+          return res.status(401).json({ message: 'Invalid Google access token.' });
+        }
+      } catch (tokenErr) {
+        return res.status(500).json({ message: 'Failed to verify Google access token with Google servers.' });
+      }
+    }
+
+    if (!email || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ message: 'Valid Google email is required.' });
+    }
+
+    const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const isAdmin = adminEmail && email === adminEmail;
+
+    let user = await User.findOne({ email });
+
+    if (user) {
+      // Existing User -> Issue session
+      if (user.role === 'PATIENT' && !user.medvaultId) {
+        user.medvaultId = await generateMedVaultId();
+        await user.save();
+      }
+      return res.json(issueSession(user));
+    }
+
+    // New User -> Google Sign-Up
+    const role = isAdmin
+      ? 'ADMIN'
+      : requestedRole === 'DOCTOR'
+      ? 'DOCTOR'
+      : 'PATIENT';
+
+    const verificationStatus = role === 'DOCTOR' ? 'PENDING' : 'VERIFIED';
+    const medvaultId = role === 'PATIENT' ? await generateMedVaultId() : undefined;
+    const randomPassword = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36);
+    const passwordHash = await bcrypt.hash(randomPassword, 10);
+
+    user = await User.create({
+      fullName: fullName || email.split('@')[0],
+      email,
+      passwordHash,
+      role,
+      verificationStatus,
+      medvaultId,
+      profile: {
+        profilePhoto: picture,
+        googleId: sub,
+        googleAuth: true,
+      },
+    });
+
+    return res.status(201).json(issueSession(user));
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Google authentication failed.' });
+  }
+});
+
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.user.toAuthJSON() });
 });
@@ -245,6 +346,53 @@ router.get('/dashboards', requireAuth, (req, res) => {
       ? ['PATIENT', 'DOCTOR']
       : [req.user.role === 'PATIENT' ? 'PATIENT' : 'DOCTOR'];
   res.json({ allowed });
+});
+
+// POST /api/auth/save-google-client-id - Save Google Client ID into environment
+router.post('/save-google-client-id', async (req, res) => {
+  try {
+    const { clientId } = req.body || {};
+    if (!clientId || !clientId.trim()) {
+      return res.status(400).json({ message: 'Client ID is required.' });
+    }
+    const clean = clientId.trim();
+    process.env.GOOGLE_CLIENT_ID = clean;
+
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const dirname = path.dirname(fileURLToPath(import.meta.url));
+
+    const backendEnvPath = path.resolve(dirname, '..', '.env');
+    const frontendEnvPath = path.resolve(dirname, '..', '..', 'frontend', '.env');
+
+    try {
+      let bEnv = await fs.readFile(backendEnvPath, 'utf8');
+      if (bEnv.includes('GOOGLE_CLIENT_ID=')) {
+        bEnv = bEnv.replace(/GOOGLE_CLIENT_ID=.*/g, `GOOGLE_CLIENT_ID=${clean}`);
+      } else {
+        bEnv += `\nGOOGLE_CLIENT_ID=${clean}\n`;
+      }
+      await fs.writeFile(backendEnvPath, bEnv, 'utf8');
+    } catch {}
+
+    try {
+      let fEnv = '';
+      try {
+        fEnv = await fs.readFile(frontendEnvPath, 'utf8');
+      } catch {}
+      if (fEnv.includes('VITE_GOOGLE_CLIENT_ID=')) {
+        fEnv = fEnv.replace(/VITE_GOOGLE_CLIENT_ID=.*/g, `VITE_GOOGLE_CLIENT_ID=${clean}`);
+      } else {
+        fEnv += `\nVITE_GOOGLE_CLIENT_ID=${clean}\n`;
+      }
+      await fs.writeFile(frontendEnvPath, fEnv, 'utf8');
+    } catch {}
+
+    res.json({ success: true, message: 'Google Client ID saved successfully.' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to save Google Client ID.', error: err.message });
+  }
 });
 
 export default router;

@@ -71,6 +71,16 @@ export async function login({ email, password }) {
   return session;
 }
 
+export async function googleAuth(payload) {
+  const data = await api('/auth/google', {
+    method: 'POST',
+    body: payload,
+  });
+  const session = sessionFrom(data.user, data.token);
+  write(SESSION_KEY, session);
+  return session;
+}
+
 export async function updateProfile(payload) {
   const session = getSession();
   const data = await api('/auth/me/profile', {

@@ -1,22 +1,33 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAccess } from '../context/AccessContext';
 import Logo from '../components/Logo';
 import PillButton from '../components/PillButton';
-import { SearchIcon, ShieldIcon, XCloseIcon } from '../components/icons';
+import { SearchIcon, ShieldIcon, XCloseIcon, LogoutIcon } from '../components/icons';
+import { getSession, signOut } from '../lib/auth';
+import DoctorVerificationTab from './admin/DoctorVerificationTab';
 import styles from './doctor/doctor.module.css';
 
 /**
- * AdminReviewQueue Page Component
- * Allows administrators to review automatically flagged suspicious emergency accesses,
- * inspect anomaly detection details, clear flags, issue warnings, or suspend doctor accounts.
+ * AdminReviewQueue / Admin Portal Page Component
+ * Allows administrators to verify doctor registrations (NMC numbers, councils, degrees)
+ * and review automatically flagged suspicious emergency accesses.
  */
 export default function AdminReviewQueue() {
+  const navigate = useNavigate();
+  const session = getSession();
   const { flaggedQueue, updateFlaggedStatus } = useAccess();
+  const [adminTab, setAdminTab] = useState('doctors'); // 'doctors' | 'anomalies'
   const [filterSeverity, setFilterSeverity] = useState('ALL'); // 'ALL' | 'CRITICAL' | 'FLAGGED' | 'REVIEW'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLogModal, setSelectedLogModal] = useState(null);
   const [actionModal, setActionModal] = useState(null); // { type: 'LEGITIMATE'|'WARNING'|'SUSPEND', flagId, doctorName }
   const [actionReason, setActionReason] = useState('');
+
+  const handleSignOut = () => {
+    signOut();
+    navigate('/login');
+  };
 
   // Filtered queue items
   const filteredItems = flaggedQueue.filter((item) => {
@@ -45,17 +56,99 @@ export default function AdminReviewQueue() {
           </span>
         </div>
 
-        <div className={styles.topRight}>
-          <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-            Administrator Portal Access
-          </span>
+        {/* Top-Level Navigation Tabs */}
+        <div style={{ display: 'flex', gap: '8px', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setAdminTab('doctors')}
+            style={{
+              background: adminTab === 'doctors' ? '#ffffff' : 'transparent',
+              color: adminTab === 'doctors' ? '#1d4ed8' : '#64748b',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontWeight: '700',
+              fontSize: '13px',
+              cursor: 'pointer',
+              boxShadow: adminTab === 'doctors' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            }}
+          >
+            👨‍⚕️ Doctor Verifications
+          </button>
+          <button
+            type="button"
+            onClick={() => setAdminTab('anomalies')}
+            style={{
+              background: adminTab === 'anomalies' ? '#ffffff' : 'transparent',
+              color: adminTab === 'anomalies' ? '#dc2626' : '#64748b',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontWeight: '700',
+              fontSize: '13px',
+              cursor: 'pointer',
+              boxShadow: adminTab === 'anomalies' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            }}
+          >
+            🚨 Flagged Access Queue
+          </button>
+        </div>
+
+        <div className={styles.topRight} style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
+              {session?.fullName || session?.name || 'Administrator'}
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+              {session?.email || 'admin@medvault.com'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            title="Sign out of Administrator Portal"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              border: '1.5px solid #fecaca',
+              background: '#ffffff',
+              color: '#dc2626',
+              fontSize: '12.5px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <LogoutIcon style={{ width: '15px', height: '15px' }} />
+            Sign Out
+          </button>
         </div>
       </header>
 
       <div className={styles.mainLayout}>
         <main className={styles.contentArea}>
-          {/* Header */}
-          <div className={styles.sectionCard}>
+          {adminTab === 'doctors' ? (
+            <div className={styles.sectionCard}>
+              <div className={styles.cardHeader} style={{ marginBottom: '20px' }}>
+                <div className={styles.cardHeaderTitle}>
+                  <div style={{ fontSize: '28px' }}>👨‍⚕️</div>
+                  <div>
+                    <h2 style={{ fontSize: '22px', margin: 0 }}>Doctor Credential Verification Dashboard</h2>
+                    <p className={styles.subtitle}>
+                      Review incoming medical practitioner registrations, verify State Medical Council details, and manage practitioner statuses.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <DoctorVerificationTab />
+            </div>
+          ) : (
+            <>
+              <div className={styles.sectionCard}>
             <div className={styles.cardHeader}>
               <div className={styles.cardHeaderTitle}>
                 <div style={{ fontSize: '28px' }}>🚨</div>
@@ -225,6 +318,8 @@ export default function AdminReviewQueue() {
               );
             })}
           </div>
+          </>
+          )}
         </main>
       </div>
 

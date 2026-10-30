@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   DUMMY_DOCTOR_TRUST_SCORE,
   DUMMY_FLAGGED_ACCESSES,
   DUMMY_PATIENT_ACCESS_HISTORY,
   MOCK_DUMMY_PATIENT,
 } from '../data/mockData';
+import { getPendingAccessRequest, respondToAccessRequest } from '../lib/records';
 
 const AccessContext = createContext(null);
 
@@ -17,7 +18,7 @@ export function AccessProvider({ children }) {
   // Trust Score State
   const [trustScore, setTrustScore] = useState(DUMMY_DOCTOR_TRUST_SCORE);
 
-  // Pending OTP Access Request for Patient Popup
+  // Pending Access Request for Patient Prompt (Google 2-Step Auth style)
   const [pendingOtpRequest, setPendingOtpRequest] = useState(null);
 
   // Patient Access History List
@@ -29,30 +30,71 @@ export function AccessProvider({ children }) {
   // Flagged Access Review Queue for Admin
   const [flaggedQueue, setFlaggedQueue] = useState(DUMMY_FLAGGED_ACCESSES);
 
+  // Real-time polling for incoming doctor access requests for the logged-in patient
+  useEffect(() => {
+    let mounted = true;
+    const pollForRequests = async () => {
+      try {
+        const req = await getPendingAccessRequest();
+        if (!mounted) return;
+        if (req && req.status === 'PENDING') {
+          setPendingOtpRequest((prev) => {
+            if (prev && prev.id === req.id && prev.status !== 'PENDING') return prev;
+            return {
+              id: req.id,
+              doctorName: req.doctorName,
+              doctorSpecialty: req.doctorSpecialization,
+              hospitalName: req.doctorHospital,
+              purpose: req.purpose,
+              notes: req.notes,
+              duration: req.duration,
+              requestedAt: new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              status: 'PENDING',
+              isRealtimeServer: true,
+            };
+          });
+        } else if (!req) {
+          setPendingOtpRequest((prev) => {
+            if (prev && prev.isRealtimeServer && prev.status === 'PENDING') return null;
+            return prev;
+          });
+        }
+      } catch {
+        // ignore network hiccups
+      }
+    };
+
+    pollForRequests();
+    const interval = setInterval(pollForRequests, 2000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // Trigger Simulated Routine Request (Manual Demo Button on Patient Dashboard)
   const triggerSimulatedRequest = () => {
-    const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
     setPendingOtpRequest({
-      id: `otp-${Date.now()}`,
-      otpCode: randomOtp,
+      id: `sim-${Date.now()}`,
       doctorName: 'Dr. Ravi Kumar',
       doctorSpecialty: 'Cardiologist',
       hospitalName: 'Apollo Hospitals, Hyderabad',
       purpose: 'Scheduled Consultation',
+      notes: 'Routine cardiovascular health check',
       duration: '30 minutes',
       requestedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'PENDING',
+      isRealtimeServer: false,
     });
   };
 
   // Doctor initiates Routine Access Request
   const sendRoutineAccessRequest = (requestData) => {
-    const randomOtp = Math.floor(100000 + Math.random() * 900000).toString();
     const req = {
-      id: `otp-${Date.now()}`,
-      otpCode: randomOtp,
+      id: `req-${Date.now()}`,
       doctorName: requestData.doctorName || 'Dr. Medical Practitioner',
-      doctorSpecialty: requestData.doctorSpecialty || 'Cardiologist',
+      doctorSpecialty: requestData.doctorSpecialty || 'General Practitioner',
       hospitalName: requestData.hospitalName || 'MedVault Medical Center',
       purpose: requestData.purpose || 'Scheduled Consultation',
       referringDoctor: requestData.referringDoctor || '',
@@ -60,17 +102,26 @@ export function AccessProvider({ children }) {
       requestedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'PENDING',
       patient: requestData.patient || MOCK_DUMMY_PATIENT,
+      isRealtimeServer: false,
     };
 
     setPendingOtpRequest(req);
     return req;
   };
 
-  // Patient approves OTP Request
-  const approveRoutineOtp = () => {
+  // Patient approves Request (Google 2-Step Allow)
+  const approveRoutineOtp = async () => {
     if (!pendingOtpRequest) return;
 
     setPendingOtpRequest((prev) => ({ ...prev, status: 'APPROVED' }));
+
+    if (pendingOtpRequest.isRealtimeServer) {
+      try {
+        await respondToAccessRequest(pendingOtpRequest.id, 'APPROVED');
+      } catch (err) {
+        console.error('Failed to notify server of approval:', err);
+      }
+    }
 
     // Add entry to patient's Who Accessed My Records list
     const newEntry = {
@@ -86,7 +137,7 @@ export function AccessProvider({ children }) {
         hour: '2-digit',
         minute: '2-digit',
       }),
-      duration: 'Ongoing',
+      duration: pendingOtpRequest.duration || '30 minutes',
       purpose: pendingOtpRequest.purpose,
       recordsViewedCount: 2,
       totalRecords: 12,
@@ -95,20 +146,29 @@ export function AccessProvider({ children }) {
 
     setPatientAccessHistory((prev) => [newEntry, ...prev]);
 
-    // Auto-clear pending popup after 4s
-    setTimeout(() => {
-      setPendingOtpRequest(null);
-    }, 4000);
-  };
-
-  // Patient denies OTP Request
-  const denyRoutineOtp = () => {
-    if (!pendingOtpRequest) return;
-    setPendingOtpRequest((prev) => ({ ...prev, status: 'DENIED' }));
-
+    // Auto-clear pending prompt after 3s
     setTimeout(() => {
       setPendingOtpRequest(null);
     }, 3000);
+  };
+
+  // Patient denies Request (Google 2-Step Deny)
+  const denyRoutineOtp = async () => {
+    if (!pendingOtpRequest) return;
+
+    setPendingOtpRequest((prev) => ({ ...prev, status: 'DENIED' }));
+
+    if (pendingOtpRequest.isRealtimeServer) {
+      try {
+        await respondToAccessRequest(pendingOtpRequest.id, 'DENIED');
+      } catch (err) {
+        console.error('Failed to notify server of denial:', err);
+      }
+    }
+
+    setTimeout(() => {
+      setPendingOtpRequest(null);
+    }, 2500);
   };
 
   // End active session (routine or emergency)

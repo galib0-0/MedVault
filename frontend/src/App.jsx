@@ -35,7 +35,7 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute role="DOCTOR">
+          <ProtectedRoute role="ADMIN">
             <AdminReviewQueue />
           </ProtectedRoute>
         }

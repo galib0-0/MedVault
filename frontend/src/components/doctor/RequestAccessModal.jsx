@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { XCloseIcon, InfoIcon } from '../icons';
 import PillButton from '../PillButton';
 import WaitingApprovalScreen from './WaitingApprovalScreen';
+import { createAccessRequest } from '../../lib/doctor';
 import styles from '../../pages/doctor/doctor.module.css';
 
 const PURPOSES = [
@@ -28,6 +29,9 @@ export default function RequestAccessModal({ patient, onClose, onRequestSent, on
   const [duration, setDuration] = useState('30 minutes');
   const [customTime, setCustomTime] = useState('');
   const [isWaiting, setIsWaiting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [createdRequestId, setCreatedRequestId] = useState(null);
 
   // Validation logic
   const isPurposeValid =
@@ -37,10 +41,37 @@ export default function RequestAccessModal({ patient, onClose, onRequestSent, on
 
   const isFormValid = isPurposeValid;
 
-  const handleSendRequest = (e) => {
+  const handleSendRequest = async (e) => {
     e.preventDefault();
-    if (!isFormValid) return;
-    setIsWaiting(true);
+    if (!isFormValid || isSubmitting) return;
+
+    setErrorMsg('');
+    setIsSubmitting(true);
+
+    try {
+      const finalPurpose = selectedPurpose === 'Other' ? otherPurposeText : selectedPurpose;
+      const finalDuration = duration === 'Specify...' ? customTime : duration;
+      const notesCombined = [
+        referringDoctor ? `Referring Doctor: ${referringDoctor}` : '',
+        notes ? `Notes: ${notes}` : '',
+      ].filter(Boolean).join(' | ');
+
+      const res = await createAccessRequest({
+        patientId: patient.id || patient._id,
+        medvaultId: patient.medvaultId,
+        purpose: finalPurpose,
+        notes: notesCombined,
+        duration: finalDuration,
+      });
+
+      const reqId = res.request?.id || res.request?._id;
+      setCreatedRequestId(reqId);
+      setIsWaiting(true);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to send access request. Please ensure backend is running.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -79,6 +110,7 @@ export default function RequestAccessModal({ patient, onClose, onRequestSent, on
           <div className={styles.modalBody}>
             <WaitingApprovalScreen
               patient={patient}
+              requestId={createdRequestId}
               requestData={{
                 purpose: selectedPurpose === 'Other' ? otherPurposeText : selectedPurpose,
                 referringDoctor,
@@ -207,19 +239,36 @@ export default function RequestAccessModal({ patient, onClose, onRequestSent, on
                 lineHeight: '1.5',
               }}
             >
-              ℹ️ The patient will receive an OTP via SMS, Email, and In-App notification. Access is granted only after they enter the correct OTP to you. The patient has 10 minutes to respond.
+              ℹ️ A real-time prompt will be sent directly to the patient's screen (Google 2-Step Auth style). When the patient reviews and clicks <strong>Allow</strong>, you will immediately receive access to their medical records.
             </div>
 
+            {errorMsg && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  color: '#dc2626',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  marginTop: '12px',
+                }}
+              >
+                ⚠️ {errorMsg}
+              </div>
+            )}
+
             <footer className={styles.modalFooter}>
-              <PillButton type="button" variant="secondary" onClick={onClose}>
+              <PillButton type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
                 Cancel
               </PillButton>
               <button
                 type="submit"
-                disabled={!isFormValid}
-                className={`${styles.authorizeBtn} ${isFormValid ? styles.authorizeBtnActive : styles.authorizeBtnDisabled}`}
+                disabled={!isFormValid || isSubmitting}
+                className={`${styles.authorizeBtn} ${isFormValid && !isSubmitting ? styles.authorizeBtnActive : styles.authorizeBtnDisabled}`}
               >
-                Send Access Request →
+                {isSubmitting ? 'Sending Request...' : 'Send Access Request →'}
               </button>
             </footer>
           </form>

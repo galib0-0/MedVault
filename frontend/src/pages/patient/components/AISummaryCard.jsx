@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AlertIcon,
   SparklesIcon,
@@ -9,12 +9,67 @@ import {
 } from '../../../components/icons.jsx';
 import styles from '../patient.module.css';
 import MarkdownBody from './MarkdownBody';
+import { translateRecordSummary, syncMedications } from '../../../lib/records';
+import { useToast } from '../../../components/Toast';
 
-const LANGS = ['English', 'Telugu', 'Hindi', 'Tamil', 'Kannada'];
+const LANGS = ['English', 'Telugu', 'Hindi', 'Tamil', 'Kannada', 'Malayalam', 'Bengali', 'Marathi'];
 
 export default function AISummaryCard({ aiSummary = null, onUpload }) {
+  const toast = useToast();
   const [lang, setLang] = useState('English');
   const [open, setOpen] = useState(false);
+  const [translatedText, setTranslatedText] = useState(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [transError, setTransError] = useState('');
+  const [syncingMeds, setSyncingMeds] = useState(false);
+
+  const handleSyncMeds = async () => {
+    if (!aiSummary?.id) return;
+    setSyncingMeds(true);
+    try {
+      const res = await syncMedications(aiSummary.id);
+      toast(res.message || 'Medications synchronized to your health profile!', 'success');
+    } catch (err) {
+      toast(err.message || 'Failed to sync medications.', 'error');
+    } finally {
+      setSyncingMeds(false);
+    }
+  };
+
+  // Reset when document changes
+  useEffect(() => {
+    setLang('English');
+    setTranslatedText(null);
+    setTransError('');
+  }, [aiSummary?.reportName]);
+
+  const handleSelectLang = async (targetLang) => {
+    setLang(targetLang);
+    setOpen(false);
+    setTransError('');
+
+    if (targetLang === 'English') {
+      setTranslatedText(null);
+      return;
+    }
+
+    const textToTranslate = aiSummary?.report || aiSummary?.summary;
+    if (!textToTranslate) return;
+
+    setIsTranslating(true);
+    try {
+      const res = await translateRecordSummary({
+        text: textToTranslate,
+        language: targetLang,
+        recordId: aiSummary?.id,
+      });
+      setTranslatedText(res.translated);
+    } catch (err) {
+      setTransError(`Translation to ${targetLang} failed: ${err.message}`);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
 
   if (!aiSummary) {
     return (
@@ -83,10 +138,7 @@ export default function AISummaryCard({ aiSummary = null, onUpload }) {
                   <button
                     type="button"
                     className={l === lang ? styles.langActive : ''}
-                    onClick={() => {
-                      setLang(l);
-                      setOpen(false);
-                    }}
+                    onClick={() => handleSelectLang(l)}
                   >
                     {l}
                     {l === lang && <span aria-hidden="true">✓</span>}
@@ -99,23 +151,110 @@ export default function AISummaryCard({ aiSummary = null, onUpload }) {
       </div>
     </div>
 
-      {aiSummary.report ? (
-        <MarkdownBody content={aiSummary.report} />
+      {isTranslating ? (
+        <div style={{ textAlign: 'center', padding: '36px 16px', background: '#f8fafc', borderRadius: '14px', border: '1px dashed #cbd5e1', margin: '14px 0' }}>
+          <div style={{ fontSize: '28px', animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>🔄</div>
+          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1d4ed8', marginTop: '10px' }}>
+            Translating medical report to {lang}...
+          </div>
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>
+            Powered by Google Gemini • Preserving clinical parameters and severity indicators
+          </p>
+        </div>
+      ) : transError ? (
+        <div style={{ background: '#fef2f2', color: '#dc2626', padding: '12px 16px', borderRadius: '10px', fontSize: '13px', margin: '14px 0' }}>
+          ⚠️ {transError}
+        </div>
       ) : (
         <>
-          <div className={styles.summaryBody}>
-            <p>{aiSummary.summary}</p>
-          </div>
-          <div className={`${styles.finding} ${findingType === 'warning' ? styles.findingWarn : styles.findingCrit}`}>
-            <span className={styles.findingIcon}>
-              <AlertIcon />
-            </span>
-            <div>
-              <strong>{aiSummary.finding}</strong>
-              <p>{aiSummary.recommendation}</p>
+          {lang !== 'English' && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#1d4ed8', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '700', marginBottom: '12px' }}>
+              🌐 Translated to {lang} via MedVault AI
             </div>
-          </div>
+          )}
+
+          {translatedText ? (
+            <MarkdownBody content={translatedText} />
+          ) : aiSummary.report ? (
+            <MarkdownBody content={aiSummary.report} />
+          ) : (
+            <>
+              <div className={styles.summaryBody}>
+                <p>{aiSummary.summary}</p>
+              </div>
+              <div className={`${styles.finding} ${findingType === 'warning' ? styles.findingWarn : styles.findingCrit}`}>
+                <span className={styles.findingIcon}>
+                  <AlertIcon />
+                </span>
+                <div>
+                  <strong>{aiSummary.finding}</strong>
+                  <p>{aiSummary.recommendation}</p>
+                </div>
+              </div>
+            </>
+          )}
         </>
+      )}
+
+      {aiSummary.medications && aiSummary.medications.length > 0 && (
+        <div style={{ marginTop: '16px', padding: '16px', background: '#f8fafc', borderRadius: '14px', border: '1.5px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>💊</span>
+              <strong style={{ fontSize: '14px', color: '#0f172a' }}>
+                Deciphered Prescription & Medication Schedule
+              </strong>
+            </div>
+            {aiSummary.id && (
+              <button
+                type="button"
+                onClick={handleSyncMeds}
+                disabled={syncingMeds}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                }}
+              >
+                {syncingMeds ? 'Syncing...' : '➕ Sync to My Profile'}
+              </button>
+            )}
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                  <th style={{ padding: '8px 10px', color: '#475569' }}>Medicine</th>
+                  <th style={{ padding: '8px 10px', color: '#475569' }}>Dosage</th>
+                  <th style={{ padding: '8px 10px', color: '#475569' }}>Frequency</th>
+                  <th style={{ padding: '8px 10px', color: '#475569' }}>Food Timing</th>
+                  <th style={{ padding: '8px 10px', color: '#475569' }}>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aiSummary.medications.map((m, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px 10px', fontWeight: '700', color: '#0f172a' }}>{m.name}</td>
+                    <td style={{ padding: '8px 10px', color: '#334155' }}>{m.dosage || '—'}</td>
+                    <td style={{ padding: '8px 10px', color: '#1d4ed8', fontWeight: '600' }}>{m.frequency || '—'}</td>
+                    <td style={{ padding: '8px 10px', color: '#059669' }}>{m.timing || '—'}</td>
+                    <td style={{ padding: '8px 10px', color: '#64748b' }}>{m.duration || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       <p className={styles.disclaimer}>{aiSummary.disclaimer}</p>

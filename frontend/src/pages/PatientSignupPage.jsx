@@ -4,6 +4,9 @@ import AuthLayout from '../components/AuthLayout';
 import FormField from '../components/FormField';
 import PillButton from '../components/PillButton';
 import PasswordStrength from '../components/PasswordStrength';
+import GoogleButton from '../components/GoogleButton';
+import GoogleSetupModal from '../components/GoogleSetupModal';
+import { promptGoogleLogin } from '../lib/googleAuth';
 import { useToast } from '../components/Toast';
 import { ArrowLeftIcon } from '../components/icons';
 import useForm from '../lib/useForm';
@@ -53,6 +56,25 @@ export default function PatientSignupPage() {
   const toast = useToast();
   const [showMedical, setShowMedical] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showSetupModal, setShowSetupModal] = useState(false);
+
+  const handleGoogleSignUp = async () => {
+    setGoogleLoading(true);
+    try {
+      const session = await promptGoogleLogin({ role: 'PATIENT' });
+      toast(`Welcome to MedVault! Signed up as ${session.fullName || session.email}.`, 'success');
+      navigate('/patient');
+    } catch (err) {
+      if (err.code === 'MISSING_CLIENT_ID') {
+        setShowSetupModal(true);
+      } else {
+        toast(err.message || 'Google Sign-Up was cancelled or failed.', 'error');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const { values, errors, touched, handleChange, handleBlur, validateAll, isValid } =
     useForm(EMPTY, {
@@ -145,6 +167,17 @@ export default function PatientSignupPage() {
       formTitle="Create your account"
       formSubtitle="Register as a Patient on MedVault AI."
     >
+      <div style={{ maxWidth: '340px', margin: '0 auto 20px' }}>
+        <GoogleButton onClick={handleGoogleSignUp} disabled={googleLoading}>
+          {googleLoading ? 'Connecting to Google...' : 'Sign up with Google'}
+        </GoogleButton>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '16px 0', color: '#94a3b8', fontSize: '12px' }}>
+          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+          <span>or fill out details manually</span>
+          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} noValidate>
         <h3 className={styles.sectionTitle}>Personal Information</h3>
         <div className={styles.grid}>
@@ -339,6 +372,11 @@ export default function PatientSignupPage() {
           </span>
         </p>
       </form>
+
+      <GoogleSetupModal
+        open={showSetupModal}
+        onClose={() => setShowSetupModal(false)}
+      />
     </AuthLayout>
   );
 }

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { XCloseIcon, CheckCircleIcon, AlertIcon, ClockIcon } from '../icons';
+import { checkAccessRequestStatus, cancelAccessRequest } from '../../lib/doctor';
 import styles from '../../pages/doctor/doctor.module.css';
 
 /**
  * WaitingApprovalScreen Component
- * Displays real-time OTP approval waiting state with 10-minute timer, progress bar,
- * 3 channel indicators, and state handling (Approved, Denied, Expired, Cancelled).
+ * Displays real-time approval waiting state with 10-minute timer, progress bar,
+ * live polling of the patient's Allow/Deny response, and state handling.
  */
 export default function WaitingApprovalScreen({
   patient,
+  requestId,
   requestData,
   onApproved,
   onDenied,
@@ -18,6 +20,7 @@ export default function WaitingApprovalScreen({
 }) {
   const [secondsLeft, setSecondsLeft] = useState(600); // 10 minutes countdown
   const [approvalState, setApprovalState] = useState('WAITING'); // 'WAITING' | 'APPROVED' | 'DENIED' | 'EXPIRED'
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Timer countdown with useEffect cleanup
   useEffect(() => {
@@ -38,28 +41,53 @@ export default function WaitingApprovalScreen({
     return () => clearInterval(interval);
   }, [approvalState, onExpired]);
 
-  // DEMO SIMULATION: In production, this state change comes from WebSocket/real-time backend event
+  // Real-time polling for patient Allow/Deny response
   useEffect(() => {
-    if (approvalState !== 'WAITING') return;
+    if (approvalState !== 'WAITING' || !requestId) return;
 
-    const demoTimer = setTimeout(() => {
-      // PRODUCTION: Replace with real-time WebSocket / SSE listener
-      // DEMO: Auto-approve after 8 seconds of waiting
-      setApprovalState('APPROVED');
-    }, 8000);
+    let isMounted = true;
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await checkAccessRequestStatus(requestId);
+        if (!isMounted) return;
 
-    return () => clearTimeout(demoTimer);
-  }, [approvalState]);
+        if (res.status === 'APPROVED') {
+          setApprovalState('APPROVED');
+          clearInterval(pollInterval);
+        } else if (res.status === 'DENIED') {
+          setApprovalState('DENIED');
+          clearInterval(pollInterval);
+        } else if (res.status === 'EXPIRED') {
+          setApprovalState('EXPIRED');
+          clearInterval(pollInterval);
+        } else if (res.status === 'CANCELLED') {
+          clearInterval(pollInterval);
+          if (onCancelled) onCancelled();
+        }
+      } catch (err) {
+        // network hiccup, retry next interval
+      }
+    }, 1500);
 
-  // Auto-close after approval after 3 seconds
-  useEffect(() => {
-    if (approvalState === 'APPROVED') {
-      const closeTimer = setTimeout(() => {
-        if (onApproved) onApproved();
-      }, 3000);
-      return () => clearTimeout(closeTimer);
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [approvalState, requestId, onCancelled]);
+
+  const handleCancel = async () => {
+    if (isCancelling) return;
+    setIsCancelling(true);
+    try {
+      if (requestId) {
+        await cancelAccessRequest(requestId);
+      }
+    } catch {
+      // ignore
+    } finally {
+      if (onCancelled) onCancelled();
     }
-  }, [approvalState, onApproved]);
+  };
 
   const formatMmSs = (totalSecs) => {
     const mins = Math.floor(totalSecs / 60);
@@ -95,7 +123,7 @@ export default function WaitingApprovalScreen({
               ⏳ Waiting for Patient Approval
             </h3>
             <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
-              An OTP has been sent to <strong>{patient?.fullName || 'the patient'}</strong> via:
+              A real-time prompt has been sent to <strong>{patient?.fullName || 'the patient'}</strong>:
             </p>
           </div>
 
@@ -111,24 +139,22 @@ export default function WaitingApprovalScreen({
             }}
           >
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '18px' }}>📱</div>
-              <strong style={{ fontSize: '12px', display: 'block', color: '#0f172a', marginTop: '2px' }}>SMS</strong>
-              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>+91 ****3210</span>
-              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block', marginTop: '4px' }}>Sent ✅</span>
-            </div>
-
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '18px' }}>✉️</div>
-              <strong style={{ fontSize: '12px', display: 'block', color: '#0f172a', marginTop: '2px' }}>Email</strong>
-              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>mat***@gmail</span>
-              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block', marginTop: '4px' }}>Sent ✅</span>
-            </div>
-
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
               <div style={{ fontSize: '18px' }}>🔔</div>
-              <strong style={{ fontSize: '12px', display: 'block', color: '#0f172a', marginTop: '2px' }}>In-App</strong>
-              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>MedVault App</span>
-              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block', marginTop: '4px' }}>Sent ✅</span>
+              <strong style={{ fontSize: '12px', display: 'block', color: '#0f172a', marginTop: '2px' }}>In-App Prompt</strong>
+              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block', marginTop: '4px' }}>Active 🟢</span>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '18px' }}>📱</div>
+              <strong style={{ fontSize: '12px', display: 'block', color: '#0f172a', marginTop: '2px' }}>2-Step Auth</strong>
+              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>Allow / Deny</span>
+              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block', marginTop: '4px' }}>Delivered ✅</span>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '18px' }}>🛡️</div>
+              <strong style={{ fontSize: '12px', display: 'block', color: '#0f172a', marginTop: '2px' }}>Credentials</strong>
+              <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: '700', display: 'block', marginTop: '4px' }}>Verified Doctor ✅</span>
             </div>
           </div>
 
@@ -150,13 +176,14 @@ export default function WaitingApprovalScreen({
             </div>
           </div>
 
-          <p style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic', margin: '4px 0' }}>
-            Simulating live response (will auto-approve in ~8 seconds for demo)...
+          <p style={{ fontSize: '11px', color: '#2563eb', fontWeight: '500', margin: '4px 0' }}>
+            📡 Real-time sync active • Waiting for patient to tap [Allow] on their screen...
           </p>
 
           <button
             type="button"
-            onClick={onCancelled}
+            disabled={isCancelling}
+            onClick={handleCancel}
             style={{
               background: 'transparent',
               border: '1px solid #fca5a5',
@@ -165,11 +192,11 @@ export default function WaitingApprovalScreen({
               borderRadius: '10px',
               fontWeight: '600',
               fontSize: '13px',
-              cursor: 'pointer',
+              cursor: isCancelling ? 'not-allowed' : 'pointer',
               marginTop: '4px',
             }}
           >
-            Cancel Request
+            {isCancelling ? 'Cancelling...' : 'Cancel Request'}
           </button>
         </div>
       )}
@@ -185,10 +212,10 @@ export default function WaitingApprovalScreen({
               Access Granted!
             </h3>
             <p style={{ fontSize: '14px', color: '#334155', margin: 0 }}>
-              <strong>{patient?.fullName || 'Patient'}</strong> approved your request.
+              <strong>{patient?.fullName || 'Patient'}</strong> approved your access request in real-time.
             </p>
             <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '4px' }}>
-              OTP verified successfully.
+              Authorization verified & logged to security audit trail.
             </span>
           </div>
 

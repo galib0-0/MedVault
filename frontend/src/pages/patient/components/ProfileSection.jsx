@@ -37,7 +37,7 @@ function QrBlock({ seed = 'MEDVAULT' }) {
   );
 }
 
-export default function ProfileSection({ profile = {}, onEditProfile, onViewQr, onDownloadQr }) {
+export default function ProfileSection({ profile = {}, onEditProfile, onViewQr, onDownloadQr, onExportPassport }) {
   const p = {
     name: profile.name || 'Patient',
     firstName: profile.firstName || 'P',
@@ -61,6 +61,9 @@ export default function ProfileSection({ profile = {}, onEditProfile, onViewQr, 
           <p className={styles.cardSub}>Your identity and emergency access details.</p>
         </div>
         <div className={styles.profileHeadActions}>
+          <button type="button" className={styles.smBtn} onClick={onExportPassport || onViewQr}>
+            🖨️ Health Passport (PDF)
+          </button>
           <button type="button" className={styles.smBtnOutline} onClick={onEditProfile}>
             Edit Profile
           </button>
@@ -128,11 +131,11 @@ export default function ProfileSection({ profile = {}, onEditProfile, onViewQr, 
             <ShieldIcon /> Secure &amp; controlled access
           </span>
           <div className={styles.qrActions}>
-            <button type="button" className={styles.smBtn} onClick={onViewQr}>
-              View My Emergency QR
+            <button type="button" className={styles.smBtn} onClick={onViewQr || onExportPassport}>
+              View Emergency QR
             </button>
-            <button type="button" className={styles.smBtnOutline} onClick={onDownloadQr}>
-              <DownloadIcon /> Download
+            <button type="button" className={styles.smBtnOutline} onClick={onDownloadQr || onExportPassport}>
+              <DownloadIcon /> Export PDF
             </button>
           </div>
         </div>

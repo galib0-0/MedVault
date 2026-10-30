@@ -17,8 +17,11 @@ import RemindersSection from './components/RemindersSection';
 import VaccinationSection from './components/VaccinationSection';
 import TimelineSection from './components/TimelineSection';
 import DependentsSection from './components/DependentsSection';
+import AddDependentModal from './components/AddDependentModal';
+import DependentDetailModal from './components/DependentDetailModal';
 import ProfileSection from './components/ProfileSection';
 import ProfileEditModal from './components/ProfileEditModal';
+import HealthPassportModal from '../../components/patient/HealthPassportModal';
 import AccessHistorySection from '../../components/patient/AccessHistorySection';
 import OTPApprovalPopup from '../../components/patient/OTPApprovalPopup';
 import PostAccessNotification from '../../components/shared/PostAccessNotification';
@@ -33,6 +36,9 @@ export default function PatientDashboard() {
   const [active, setActive] = useState('overview');
   const [drawer, setDrawer] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [addDependentOpen, setAddDependentOpen] = useState(false);
+  const [selectedDependent, setSelectedDependent] = useState(null);
+  const [passportOpen, setPassportOpen] = useState(false);
 
   const session = useMemo(() => getSession(), [version]);
   const name = session?.name || 'Patient';
@@ -143,10 +149,14 @@ export default function PatientDashboard() {
 
           <div className={styles.bottomGrid}>
             <div ref={bindRef('vaccinations')}>
-              <VaccinationSection vaccinations={data.vaccinations} />
+              <VaccinationSection vaccinations={data.vaccinations} onAdd={() => setAddDependentOpen(true)} />
             </div>
             <div ref={bindRef('dependents')}>
-              <DependentsSection dependents={data.dependents} onAdd={comingSoon} />
+              <DependentsSection
+                dependents={data.dependents}
+                onAdd={() => setAddDependentOpen(true)}
+                onViewDependent={(dep) => setSelectedDependent(dep)}
+              />
             </div>
           </div>
 
@@ -158,8 +168,9 @@ export default function PatientDashboard() {
             <ProfileSection
               profile={data.profile}
               onEditProfile={data.isAdmin ? null : () => setEditOpen(true)}
-              onViewQr={comingSoon}
-              onDownloadQr={comingSoon}
+              onViewQr={() => setPassportOpen(true)}
+              onDownloadQr={() => setPassportOpen(true)}
+              onExportPassport={() => setPassportOpen(true)}
             />
           </div>
 
@@ -178,6 +189,37 @@ export default function PatientDashboard() {
         session={session}
         onClose={() => setEditOpen(false)}
         onSaved={() => setVersion((v) => v + 1)}
+      />
+
+      <AddDependentModal
+        open={addDependentOpen}
+        onClose={() => setAddDependentOpen(false)}
+        onSaved={() => data.refresh()}
+      />
+
+      <DependentDetailModal
+        open={Boolean(selectedDependent)}
+        dependent={selectedDependent}
+        onClose={() => setSelectedDependent(null)}
+        onUpdated={() => {
+          data.refresh();
+          // Update selectedDependent if modal is still open
+          if (selectedDependent) {
+            const updated = (data.dependents || []).find(
+              (d) => (d.id || d._id) === (selectedDependent.id || selectedDependent._id)
+            );
+            if (updated) setSelectedDependent(updated);
+          }
+        }}
+      />
+
+      <HealthPassportModal
+        open={passportOpen}
+        onClose={() => setPassportOpen(false)}
+        profile={data.profile}
+        emergency={data.emergency}
+        records={data.records}
+        dependents={data.dependents}
       />
 
       {/* FEATURE 1 & 2: Patient In-App OTP & Post-Access Emergency Notification Popups */}

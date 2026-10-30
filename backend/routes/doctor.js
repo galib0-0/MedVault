@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import Record from '../models/Record.js';
 import AccessLog from '../models/AccessLog.js';
 import DoctorNote from '../models/DoctorNote.js';
+import AccessRequest from '../models/AccessRequest.js';
 
 const router = Router();
 
@@ -217,6 +218,103 @@ router.get('/patients/:patientId/notes', requireAuth, requireDoctorAccess, async
     res.json({ notes });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch doctor notes.' });
+  }
+});
+
+// POST /api/doctor/access-requests - Doctor sends real-time access request to patient
+router.post('/access-requests', requireAuth, requireDoctorAccess, async (req, res) => {
+  try {
+    const { patientId, medvaultId, purpose, notes, duration } = req.body || {};
+
+    if (!purpose) {
+      return res.status(400).json({ message: 'Purpose of visit is required.' });
+    }
+
+    if (req.user.role !== 'ADMIN' && req.user.verificationStatus !== 'VERIFIED') {
+      return res.status(403).json({
+        message: 'Your medical credentials must be VERIFIED before requesting patient access.',
+      });
+    }
+
+    let patientFilter = { role: 'PATIENT' };
+    if (patientId) {
+      patientFilter._id = patientId;
+    } else if (medvaultId) {
+      patientFilter.medvaultId = medvaultId.trim().toUpperCase();
+    } else {
+      return res.status(400).json({ message: 'Patient ID or MedVault ID is required.' });
+    }
+
+    const patient = await User.findOne(patientFilter);
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found.' });
+    }
+
+    // Cancel any previous pending requests from this doctor to this patient
+    await AccessRequest.updateMany(
+      { doctor: req.user._id, patient: patient._id, status: 'PENDING' },
+      { status: 'CANCELLED' }
+    );
+
+    const accessReq = await AccessRequest.create({
+      doctor: req.user._id,
+      doctorName: req.user.fullName,
+      doctorSpecialization: req.user.profile?.specialization || 'Medical Practitioner',
+      doctorHospital: req.user.profile?.hospitalName || 'MedVault Medical Network',
+      patient: patient._id,
+      patientMedvaultId: patient.medvaultId || 'MV-UNKNOWN',
+      patientName: patient.fullName,
+      purpose,
+      notes: notes || '',
+      duration: duration || '30 minutes',
+      status: 'PENDING',
+    });
+
+    res.status(201).json({ success: true, request: accessReq });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Failed to initiate access request.' });
+  }
+});
+
+// GET /api/doctor/access-requests/:id/status - Doctor checks real-time status of an access request
+router.get('/access-requests/:id/status', requireAuth, requireDoctorAccess, async (req, res) => {
+  try {
+    const accessReq = await AccessRequest.findById(req.params.id);
+    if (!accessReq) {
+      return res.status(404).json({ message: 'Access request not found.' });
+    }
+
+    // Check expiry
+    if (accessReq.status === 'PENDING' && new Date() > new Date(accessReq.expiresAt)) {
+      accessReq.status = 'EXPIRED';
+      await accessReq.save();
+    }
+
+    res.json({ status: accessReq.status, request: accessReq });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to check access request status.' });
+  }
+});
+
+// POST /api/doctor/access-requests/:id/cancel - Doctor cancels pending access request
+router.post('/access-requests/:id/cancel', requireAuth, requireDoctorAccess, async (req, res) => {
+  try {
+    const accessReq = await AccessRequest.findOne({
+      _id: req.params.id,
+      doctor: req.user._id,
+    });
+    if (!accessReq) {
+      return res.status(404).json({ message: 'Access request not found.' });
+    }
+
+    if (accessReq.status === 'PENDING') {
+      accessReq.status = 'CANCELLED';
+      await accessReq.save();
+    }
+
+    res.json({ success: true, status: accessReq.status });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to cancel access request.' });
   }
 });
 

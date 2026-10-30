@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.js';
 import recordsRouter from './routes/records.js';
 import doctorRoutes from './routes/doctor.js';
 import adminRoutes from './routes/admin.js';
+import dependentsRoutes from './routes/dependents.js';
 import User from './models/User.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/records', recordsRouter);
 app.use('/api/doctor', doctorRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/dependents', dependentsRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use((err, _req, res, _next) => {

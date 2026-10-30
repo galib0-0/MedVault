@@ -8,7 +8,7 @@ const STATUS_LABEL = {
   upcoming: 'Upcoming',
 };
 
-export default function VaccinationSection({ vaccinations = { overall: 0, items: [] } }) {
+export default function VaccinationSection({ vaccinations = { overall: 0, items: [] }, onAdd }) {
   const items = vaccinations.items || [];
 
   if (items.length === 0) {
@@ -29,7 +29,7 @@ export default function VaccinationSection({ vaccinations = { overall: 0, items:
             Your vaccination history and upcoming doses will be tracked here so you never miss
             one.
           </p>
-          <button type="button" className={styles.smBtnOutline}>
+          <button type="button" className={styles.smBtnOutline} onClick={onAdd}>
             <PlusIcon /> Add vaccination record
           </button>
         </div>
@@ -79,8 +79,8 @@ export default function VaccinationSection({ vaccinations = { overall: 0, items:
         })}
       </ul>
 
-      <button type="button" className={styles.fullLink}>
-        <PlusIcon /> Add to vaccination record
+      <button type="button" className={styles.fullLink} onClick={onAdd}>
+        <PlusIcon /> Add child vaccination record
       </button>
     </section>
   );

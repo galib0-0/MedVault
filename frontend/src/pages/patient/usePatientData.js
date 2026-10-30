@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import * as demo from './data';
 import { getRecords } from '../../lib/records';
+import { getDependents } from '../../lib/dependents';
 
 function list(value) {
   if (!value) return [];
@@ -66,6 +67,7 @@ function recordLabel(date) {
 function summaryFromRecord(record) {
   if (!record || !record.aiSummary) return null;
   return {
+    id: record.id || record._id,
     reportName: record.name,
     generatedAt: recordLabel(record.createdAt),
     report: record.aiSummary.report || '',
@@ -73,6 +75,9 @@ function summaryFromRecord(record) {
     finding: record.aiSummary.finding || '',
     findingType: record.aiSummary.findingType === 'critical' ? 'critical' : 'warning',
     recommendation: record.aiSummary.recommendation || '',
+    medications: record.aiSummary.medications || [],
+    isPrescription: Boolean(record.aiSummary.isPrescription),
+    fileUrl: record.fileUrl || null,
     disclaimer: 'AI-generated summary for easier understanding. Please consult a qualified healthcare professional for medical advice.',
     source: record.aiSummary.source || 'gemini',
   };
@@ -81,6 +86,8 @@ function summaryFromRecord(record) {
 export function usePatientData(session) {
   const isAdmin = session?.role === 'ADMIN';
   const [serverRecords, setServerRecords] = useState(null);
+  const [serverDependents, setServerDependents] = useState(null);
+  const [vaccinationOverview, setVaccinationOverview] = useState(null);
   const [tick, setTick] = useState(0);
 
   const refresh = () => setTick((t) => t + 1);
@@ -88,6 +95,8 @@ export function usePatientData(session) {
   useEffect(() => {
     if (isAdmin) {
       setServerRecords(null);
+      setServerDependents(null);
+      setVaccinationOverview(null);
       return;
     }
     let mounted = true;
@@ -98,6 +107,21 @@ export function usePatientData(session) {
       .catch(() => {
         if (mounted) setServerRecords([]);
       });
+
+    getDependents()
+      .then((data) => {
+        if (mounted) {
+          setServerDependents(data.dependents || []);
+          setVaccinationOverview(data.vaccinationOverview || { overall: 0, items: [] });
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setServerDependents([]);
+          setVaccinationOverview({ overall: 0, items: [] });
+        }
+      });
+
     return () => {
       mounted = false;
     };
@@ -172,8 +196,8 @@ export function usePatientData(session) {
       aiProcessing: processingCount,
     },
     aiSummary: summaryFromRecord(latestReady),
-    dependents: [],
-    vaccinations: { overall: 0, items: [] },
+    dependents: serverDependents || [],
+    vaccinations: vaccinationOverview || { overall: 0, items: [] },
     timeline: [],
     activity,
     notifications: [],

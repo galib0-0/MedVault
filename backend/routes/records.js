@@ -6,7 +6,8 @@ import multer from 'multer';
 import { requireAuth } from '../middleware/auth.js';
 import Record from '../models/Record.js';
 import AccessLog from '../models/AccessLog.js';
-import { summarizeRecord } from '../services/gemini.js';
+import AccessRequest from '../models/AccessRequest.js';
+import { summarizeRecord, translateMedicalReport } from '../services/gemini.js';
 
 const router = Router();
 
@@ -69,6 +70,88 @@ router.get('/access-history', requireAuth, async (req, res) => {
     res.json({ logs });
   } catch (err) {
     res.status(500).json({ message: 'Failed to load access history.' });
+  }
+});
+
+// GET /api/records/access-requests/pending - Fetch active pending access request for this patient
+router.get('/access-requests/pending', requireAuth, async (req, res) => {
+  try {
+    const pendingReq = await AccessRequest.findOne({
+      patient: req.user._id,
+      status: 'PENDING',
+      expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+
+    res.json({ request: pendingReq ? pendingReq.toJSON() : null });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to check pending access requests.' });
+  }
+});
+
+// POST /api/records/access-requests/:id/respond - Patient ALLOWS or DENIES access
+router.post('/access-requests/:id/respond', requireAuth, async (req, res) => {
+  try {
+    const { action } = req.body || {}; // 'APPROVED' or 'DENIED'
+    if (!['APPROVED', 'DENIED'].includes(action)) {
+      return res.status(400).json({ message: 'Action must be APPROVED or DENIED.' });
+    }
+
+    const accessReq = await AccessRequest.findOne({
+      _id: req.params.id,
+      patient: req.user._id,
+    });
+
+    if (!accessReq) {
+      return res.status(404).json({ message: 'Access request not found.' });
+    }
+
+    if (accessReq.status !== 'PENDING') {
+      return res.status(400).json({
+        message: `Request is already ${accessReq.status.toLowerCase()}.`,
+        status: accessReq.status,
+      });
+    }
+
+    accessReq.status = action;
+    accessReq.respondedAt = new Date();
+    await accessReq.save();
+
+    // Log into AccessLog for audit trail
+    if (action === 'APPROVED') {
+      await AccessLog.create({
+        doctor: accessReq.doctor,
+        doctorName: accessReq.doctorName,
+        doctorSpecialization: accessReq.doctorSpecialization,
+        doctorHospital: accessReq.doctorHospital,
+        patient: req.user._id,
+        patientMedvaultId: req.user.medvaultId || accessReq.patientMedvaultId,
+        patientName: req.user.fullName,
+        accessType: 'STANDARD_CONSULTATION',
+        reason: accessReq.purpose,
+        customExplanation: accessReq.notes || 'Routine consultation approved by patient',
+        recordsAccessed: ['Consultation Access - Approved by Patient'],
+        authorizationStatus: 'AUTHORIZED',
+      });
+    } else {
+      await AccessLog.create({
+        doctor: accessReq.doctor,
+        doctorName: accessReq.doctorName,
+        doctorSpecialization: accessReq.doctorSpecialization,
+        doctorHospital: accessReq.doctorHospital,
+        patient: req.user._id,
+        patientMedvaultId: req.user.medvaultId || accessReq.patientMedvaultId,
+        patientName: req.user.fullName,
+        accessType: 'STANDARD_CONSULTATION',
+        reason: accessReq.purpose,
+        customExplanation: 'Denied by patient via prompt',
+        recordsAccessed: [],
+        authorizationStatus: 'DENIED',
+      });
+    }
+
+    res.json({ success: true, status: action, request: accessReq.toJSON() });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to process access response.' });
   }
 });
 
@@ -138,6 +221,107 @@ router.get('/:id', requireAuth, async (req, res) => {
     res.json({ record });
   } catch {
     res.status(500).json({ message: 'Failed to load record.' });
+  }
+});
+
+// POST /api/records/translate - Translate medical report into target regional language
+router.post('/translate', requireAuth, async (req, res) => {
+  try {
+    const { text, language, recordId } = req.body || {};
+    if (!text && !recordId) {
+      return res.status(400).json({ message: 'Text or recordId is required for translation.' });
+    }
+
+    const targetLang = language || 'English';
+    if (targetLang.toLowerCase() === 'english') {
+      return res.json({ translated: text, language: 'English' });
+    }
+
+    let sourceText = text;
+
+    if (recordId) {
+      const record = await Record.findById(recordId);
+      if (record && record.aiSummary) {
+        if (!sourceText) {
+          sourceText = record.aiSummary.report || record.aiSummary.summary || '';
+        }
+        // Return cached translation if available
+        if (record.aiSummary.translations && record.aiSummary.translations[targetLang]) {
+          return res.json({
+            translated: record.aiSummary.translations[targetLang],
+            language: targetLang,
+            cached: true,
+          });
+        }
+      }
+    }
+
+    const translated = await translateMedicalReport({
+      text: sourceText,
+      targetLanguage: targetLang,
+    });
+
+    // Cache if recordId exists
+    if (recordId) {
+      try {
+        const record = await Record.findById(recordId);
+        if (record && record.aiSummary) {
+          const translations = record.aiSummary.translations || {};
+          translations[targetLang] = translated;
+          record.aiSummary.translations = translations;
+          record.markModified('aiSummary');
+          await record.save();
+        }
+      } catch {
+        // caching failure is non-fatal
+      }
+    }
+
+    res.json({ translated, language: targetLang, cached: false });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Translation failed.' });
+  }
+});
+
+// POST /api/records/:id/sync-medications - Add deciphered medications to patient's active medication list
+router.post('/:id/sync-medications', requireAuth, async (req, res) => {
+  try {
+    const record = await Record.findOne({ _id: req.params.id, user: req.user._id });
+    if (!record) {
+      return res.status(404).json({ message: 'Record not found.' });
+    }
+
+    const meds = record.aiSummary?.medications || [];
+    if (!meds.length) {
+      return res.status(400).json({ message: 'No structured medications found in this record.' });
+    }
+
+    const currentMeds = Array.isArray(req.user.profile?.medications)
+      ? req.user.profile.medications
+      : typeof req.user.profile?.medications === 'string'
+      ? req.user.profile.medications.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const newMedStrings = meds.map(
+      (m) => `${m.name}${m.dosage ? ` (${m.dosage})` : ''}${m.frequency ? ` - ${m.frequency}` : ''}`
+    );
+
+    const merged = Array.from(new Set([...currentMeds, ...newMedStrings]));
+
+    req.user.profile = {
+      ...(req.user.profile || {}),
+      medications: merged,
+    };
+
+    req.user.markModified('profile');
+    await req.user.save();
+
+    res.json({
+      message: `${newMedStrings.length} medication(s) synchronized to your active profile.`,
+      medications: merged,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to sync medications.', error: err.message });
   }
 });
 

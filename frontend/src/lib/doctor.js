@@ -32,3 +32,26 @@ export async function getDoctorNotes(patientId) {
   const token = tokenFromSession();
   return api(`/doctor/patients/${patientId}/notes`, { token });
 }
+
+export async function createAccessRequest({ patientId, medvaultId, purpose, notes, duration }) {
+  const token = tokenFromSession();
+  return api('/doctor/access-requests', {
+    method: 'POST',
+    token,
+    body: { patientId, medvaultId, purpose, notes, duration },
+  });
+}
+
+export async function checkAccessRequestStatus(requestId) {
+  const token = tokenFromSession();
+  return api(`/doctor/access-requests/${requestId}/status`, { token });
+}
+
+export async function cancelAccessRequest(requestId) {
+  const token = tokenFromSession();
+  return api(`/doctor/access-requests/${requestId}/cancel`, {
+    method: 'POST',
+    token,
+  });
+}
+

@@ -6,6 +6,8 @@ import PillButton from '../components/PillButton';
 import CheckboxField from '../components/CheckboxField';
 import RoleToggle from '../components/RoleToggle';
 import GoogleButton from '../components/GoogleButton';
+import GoogleSetupModal from '../components/GoogleSetupModal';
+import { promptGoogleLogin } from '../lib/googleAuth';
 import { useToast } from '../components/Toast';
 import { login } from '../lib/auth';
 import { required, isEmail } from '../lib/validation';
@@ -21,6 +23,8 @@ export default function LoginPage() {
   const [errors, setErrors] = useState({});
   const [valid, setValid] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showSetupModal, setShowSetupModal] = useState(false);
 
   const validateField = (name, value) => {
     if (!required(value)) return `${name === 'email' ? 'Email' : 'Password'} is required.`;
@@ -61,15 +65,13 @@ export default function LoginPage() {
       const isAdmin = session.role === 'ADMIN';
       const target =
         isAdmin
-          ? role === 'DOCTOR'
-            ? '/doctor'
-            : '/patient'
+          ? '/admin'
           : session.role === 'DOCTOR'
           ? '/doctor'
           : '/patient';
       toast(
         isAdmin
-          ? 'Signed in as Admin.'
+          ? 'Welcome back, Administrator. Signed in to Admin Portal.'
           : session.role === 'DOCTOR'
           ? 'Welcome back, Doctor.'
           : 'Welcome back! Signed in to your Patient space.',
@@ -80,6 +82,30 @@ export default function LoginPage() {
       toast(err.message || 'Sign in failed. Please try again.', 'error');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const session = await promptGoogleLogin({ role });
+      const isAdmin = session.role === 'ADMIN';
+      const target =
+        isAdmin
+          ? '/admin'
+          : session.role === 'DOCTOR'
+          ? '/doctor'
+          : '/patient';
+      toast(`Signed in with Google as ${session.fullName || session.email}.`, 'success');
+      navigate(target);
+    } catch (err) {
+      if (err.code === 'MISSING_CLIENT_ID') {
+        setShowSetupModal(true);
+      } else {
+        toast(err.message || 'Google Sign-In was cancelled or failed.', 'error');
+      }
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -143,13 +169,9 @@ export default function LoginPage() {
         <span>or</span>
       </div>
 
-      <GoogleButton
-        onClick={() =>
-          toast(
-            `${role === 'DOCTOR' ? 'Doctor' : 'Patient'} Google Sign-In will be available soon.`
-          )
-        }
-      />
+      <GoogleButton onClick={handleGoogleSignIn} disabled={googleLoading}>
+        {googleLoading ? 'Connecting to Google...' : 'Sign In with Google'}
+      </GoogleButton>
 
       <p className={styles.footer}>
         New to MedVault AI? <Link to="/signup">Create an account</Link>
@@ -158,6 +180,11 @@ export default function LoginPage() {
       <p className={styles.demoNote}>
         Use your registered account credentials to sign in.
       </p>
+
+      <GoogleSetupModal
+        open={showSetupModal}
+        onClose={() => setShowSetupModal(false)}
+      />
     </AuthLayout>
   );
 }

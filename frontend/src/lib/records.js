@@ -31,3 +31,42 @@ export async function uploadRecord({ file, category }) {
   }
   return data.record;
 }
+
+export async function getPendingAccessRequest() {
+  const token = tokenFromSession();
+  if (!token) return null;
+  try {
+    const data = await api('/records/access-requests/pending', { token });
+    return data.request || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function respondToAccessRequest(requestId, action) {
+  const token = tokenFromSession();
+  return api(`/records/access-requests/${requestId}/respond`, {
+    method: 'POST',
+    token,
+    body: { action },
+  });
+}
+
+export async function translateRecordSummary({ text, language, recordId }) {
+  const token = tokenFromSession();
+  return api('/records/translate', {
+    method: 'POST',
+    token,
+    body: { text, language, recordId },
+  });
+}
+
+export async function syncMedications(recordId) {
+  const token = tokenFromSession();
+  return api(`/records/${recordId}/sync-medications`, {
+    method: 'POST',
+    token,
+  });
+}
+
+

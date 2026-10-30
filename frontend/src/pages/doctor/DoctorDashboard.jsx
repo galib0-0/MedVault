@@ -37,6 +37,7 @@ import DedicatedEmergencyAccess from './components/DedicatedEmergencyAccess';
 import TrustScore from '../../components/doctor/TrustScore';
 import AdminReviewQueue from '../AdminReviewQueue';
 import { useAccess } from '../../context/AccessContext';
+import { translateRecordSummary } from '../../lib/records';
 import { MOCK_DUMMY_PATIENT, MOCK_TRANSLATIONS } from './mockData';
 import styles from './doctor.module.css';
 
@@ -103,6 +104,7 @@ export default function DoctorDashboard() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [selectedLanguage, setSelectedLanguage] = useState('English');
   const [isTranslating, setIsTranslating] = useState(false);
+  const [doctorTranslations, setDoctorTranslations] = useState({});
 
   // Doctor Notes state
   const [doctorNotes, setDoctorNotes] = useState([]);
@@ -251,8 +253,8 @@ export default function DoctorDashboard() {
     loadNotes(pendingTargetPatient.id);
   };
 
-  // Routine Access Granted Callback (After Patient OTP Approval)
-  const handleRoutineAccessGranted = ({ patient, purpose, duration }) => {
+  // Routine Access Granted Callback (After Patient Approval)
+  const handleRoutineAccessGranted = async ({ patient, purpose, duration }) => {
     const currentFormattedTime = new Date().toLocaleString('en-IN', {
       day: 'numeric',
       month: 'short',
@@ -293,11 +295,28 @@ export default function DoctorDashboard() {
       },
     ];
 
-    setPatientRecords(defaultRecords);
-    setSelectedRecord(defaultRecords[0]);
-    setActiveTab('active');
+    try {
+      const pId = patient.id || patient._id;
+      if (pId) {
+        const data = await getPatientRecords(pId);
+        if (data.records && data.records.length > 0) {
+          setPatientRecords(data.records);
+          setSelectedRecord(data.records[0]);
+        } else {
+          setPatientRecords(defaultRecords);
+          setSelectedRecord(defaultRecords[0]);
+        }
+      } else {
+        setPatientRecords(defaultRecords);
+        setSelectedRecord(defaultRecords[0]);
+      }
+    } catch {
+      setPatientRecords(defaultRecords);
+      setSelectedRecord(defaultRecords[0]);
+    }
 
-    loadNotes(patient.id);
+    setActiveTab('active');
+    loadNotes(patient.id || patient._id);
   };
 
   // Dedicated Emergency Access Handler
@@ -361,15 +380,31 @@ export default function DoctorDashboard() {
     }
   };
 
-  // Language Change Handler
-  const handleLanguageChange = (newLang) => {
+  // Language Change Handler with real-time translation
+  const handleLanguageChange = async (newLang) => {
     setSelectedLanguage(newLang);
     if (newLang === 'English') return;
 
+    if (doctorTranslations[newLang]) return;
+
+    const textToTranslate = selectedRecord?.aiSummary?.report || selectedRecord?.aiSummary?.summary;
+    if (!textToTranslate) return;
+
     setIsTranslating(true);
-    setTimeout(() => {
+    try {
+      const res = await translateRecordSummary({
+        text: textToTranslate,
+        language: newLang,
+        recordId: selectedRecord?.id || selectedRecord?._id,
+      });
+      setDoctorTranslations((prev) => ({ ...prev, [newLang]: res.translated }));
+    } catch {
+      if (MOCK_TRANSLATIONS[newLang]) {
+        setDoctorTranslations((prev) => ({ ...prev, [newLang]: MOCK_TRANSLATIONS[newLang] }));
+      }
+    } finally {
       setIsTranslating(false);
-    }, 1000);
+    }
   };
 
   const handleSignOut = () => {
@@ -925,8 +960,8 @@ export default function DoctorDashboard() {
                           <div className={styles.translationLoader}>
                             ⏳ Translation in progress...
                           </div>
-                        ) : selectedLanguage !== 'English' && MOCK_TRANSLATIONS[selectedLanguage] ? (
-                          <MarkdownBody content={MOCK_TRANSLATIONS[selectedLanguage]} />
+                        ) : selectedLanguage !== 'English' && (doctorTranslations[selectedLanguage] || MOCK_TRANSLATIONS[selectedLanguage]) ? (
+                          <MarkdownBody content={doctorTranslations[selectedLanguage] || MOCK_TRANSLATIONS[selectedLanguage]} />
                         ) : selectedRecord.aiSummary?.report ? (
                           <MarkdownBody content={selectedRecord.aiSummary.report} />
                         ) : selectedRecord.aiSummary?.summary ? (

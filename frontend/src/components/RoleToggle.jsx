@@ -1,4 +1,4 @@
-import { UserIcon, StethoscopeIcon } from './icons';
+import { UserIcon, StethoscopeIcon, ShieldIcon } from './icons';
 import styles from './RoleToggle.module.css';
 
 export default function RoleToggle({ value, onChange }) {
@@ -23,6 +23,16 @@ export default function RoleToggle({ value, onChange }) {
       >
         <StethoscopeIcon />
         Doctor
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={value === 'ADMIN'}
+        className={value === 'ADMIN' ? styles.active : ''}
+        onClick={() => onChange('ADMIN')}
+      >
+        <ShieldIcon />
+        Admin
       </button>
     </div>
   );
