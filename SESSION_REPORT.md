@@ -188,16 +188,17 @@ To obtain and deploy your official Google OAuth 2.0 Client ID:
      - `http://localhost:5000/api/auth/google/callback` (if using redirect mode)
    - Click **Create**.
 
-4. **Copy the Client ID into your Environment Files**:
+4. **Configured Permanent Google Client ID**:
+   - Client ID: `1094871067975-vrrhfem71sseh67g6lsfugtdvq4e9k6c.apps.googleusercontent.com`
    - In [`frontend/.env`](file:///D:/Projects/MedVault1/frontend/.env):
      ```env
-     VITE_GOOGLE_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
+     VITE_GOOGLE_CLIENT_ID=1094871067975-vrrhfem71sseh67g6lsfugtdvq4e9k6c.apps.googleusercontent.com
      ```
    - In [`backend/.env`](file:///D:/Projects/MedVault1/backend/.env):
      ```env
-     GOOGLE_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
+     GOOGLE_CLIENT_ID=1094871067975-vrrhfem71sseh67g6lsfugtdvq4e9k6c.apps.googleusercontent.com
      ```
-   - Restart the dev server (`npm run dev`) and backend (`node server.js`).
+   - Added as permanent default fallback in [`frontend/src/lib/googleAuth.js`](file:///D:/Projects/MedVault1/frontend/src/lib/googleAuth.js) and [`backend/routes/auth.js`](file:///D:/Projects/MedVault1/backend/routes/auth.js) so it is permanently active without ever needing to be re-entered.
 
 ---
 
