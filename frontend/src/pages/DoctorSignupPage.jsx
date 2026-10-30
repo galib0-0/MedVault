@@ -8,8 +8,11 @@ import FileUpload from '../components/FileUpload';
 import VerificationBadge from '../components/VerificationBadge';
 import { useToast } from '../components/Toast';
 import { ArrowLeftIcon, InfoIcon, ShieldIcon } from '../components/icons';
+import GoogleButton from '../components/GoogleButton';
+import GoogleSetupModal from '../components/GoogleSetupModal';
+import { promptGoogleVerify } from '../lib/googleAuth';
 import useForm from '../lib/useForm';
-import { signupDoctor } from '../lib/auth';
+import { signupDoctor, saveSession } from '../lib/auth';
 import {
   required,
   isEmail,
@@ -143,11 +146,88 @@ export default function DoctorSignupPage() {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [googleUser, setGoogleUser] = useState(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [showSetupModal, setShowSetupModal] = useState(false);
 
-  const rules = step === 1 ? STEP1_RULES : STEP2_RULES;
+  const step1Rules = {
+    fullName: (v) => (required(v) ? null : 'Full name is required.'),
+    dob: (v) =>
+      !required(v)
+        ? 'Date of birth is required.'
+        : isDateOfBirth(v)
+        ? null
+        : 'Enter a valid date of birth.',
+    mobile: (v) =>
+      !required(v)
+        ? 'Mobile number is required.'
+        : isIndianMobile(v)
+        ? null
+        : 'Enter a valid 10-digit mobile number.',
+    email: (v) =>
+      !required(v)
+        ? 'Email address is required.'
+        : isEmail(v)
+        ? null
+        : 'Enter a valid email address.',
+    password: (v) =>
+      googleUser
+        ? null
+        : !required(v)
+        ? 'Password is required.'
+        : isPassword(v)
+        ? null
+        : 'Use at least 8 characters with a letter and a number.',
+    confirmPassword: (v, all) =>
+      googleUser ? null : matches(v, all.password) ? null : 'Passwords do not match.',
+    profilePhoto: (v) =>
+      googleUser && (v || googleUser.picture)
+        ? null
+        : fileRule('Profile photo is required.')(v),
+    address: (v) => (required(v) ? null : 'Address is required.'),
+    city: (v) => (required(v) ? null : 'City is required.'),
+    state: (v) => (required(v) ? null : 'Please select your state.'),
+    hospitalName: (v) => (required(v) ? null : 'Hospital / Clinic name is required.'),
+    hospitalAddress: (v) =>
+      required(v) ? null : 'Hospital / Clinic address is required.',
+  };
 
-  const { values, errors, touched, setValue, handleChange, handleBlur, validateAll, isValid } =
+  const rules = step === 1 ? step1Rules : STEP2_RULES;
+
+  const { values, setValues, errors, touched, setValue, handleChange, handleBlur, validateAll, isValid } =
     useForm(EMPTY, rules);
+
+  const handleGoogleSignUp = async () => {
+    setGoogleLoading(true);
+    try {
+      const res = await promptGoogleVerify();
+      if (res.exists) {
+        saveSession(res.session);
+        toast(`Welcome back, Dr. ${res.user.fullName || res.user.email}!`, 'success');
+        navigate('/doctor');
+        return;
+      }
+
+      const gUser = res.googleUser;
+      setGoogleUser(gUser);
+      setValues((prev) => ({
+        ...prev,
+        fullName: gUser.fullName || prev.fullName,
+        email: gUser.email || prev.email,
+        password: prev.password || 'GoogleOAuth_Secured123!',
+        confirmPassword: prev.confirmPassword || 'GoogleOAuth_Secured123!',
+      }));
+      toast('Google account verified! Please complete your workplace and personal details below.', 'info');
+    } catch (err) {
+      if (err.code === 'MISSING_CLIENT_ID') {
+        setShowSetupModal(true);
+      } else {
+        toast(err.message || 'Google Sign-Up was cancelled or failed.', 'error');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const field = (name) => ({
     name,
@@ -187,7 +267,13 @@ export default function DoctorSignupPage() {
     }
     setSubmitting(true);
     try {
-      await signupDoctor({ ...values, role: 'DOCTOR' });
+      await signupDoctor({
+        ...values,
+        role: 'DOCTOR',
+        googleId: googleUser?.googleId,
+        googleAuth: Boolean(googleUser),
+        profilePhoto: values.profilePhoto || googleUser?.picture || null,
+      });
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
@@ -265,6 +351,76 @@ export default function DoctorSignupPage() {
 
       {step === 1 ? (
         <form onSubmit={handleContinue} noValidate>
+          {!googleUser ? (
+            <div style={{ maxWidth: '340px', margin: '0 auto 20px' }}>
+              <GoogleButton onClick={handleGoogleSignUp} disabled={googleLoading}>
+                {googleLoading ? 'Connecting to Google...' : 'Sign up with Google'}
+              </GoogleButton>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '16px 0', color: '#94a3b8', fontSize: '12px' }}>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                <span>or fill out details manually</span>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+              border: '1px solid #bbf7d0',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              margin: '0 auto 24px',
+              maxWidth: '560px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                {googleUser.picture ? (
+                  <img
+                    src={googleUser.picture}
+                    alt={googleUser.fullName}
+                    style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #22c55e' }}
+                  />
+                ) : (
+                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#2563eb', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                    {googleUser.fullName?.charAt(0) || 'Dr'}
+                  </div>
+                )}
+                <div style={{ minWidth: 0, textAlign: 'left' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>✓ Google Account Connected</span>
+                  </div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {googleUser.fullName} ({googleUser.email})
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    Basic info pre-filled. Please complete your professional & workplace details.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoogleUser(null);
+                  setValues((v) => ({ ...v, password: '', confirmPassword: '' }));
+                }}
+                style={{
+                  background: 'none',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Change
+              </button>
+            </div>
+          )}
+
           <h3 className={styles.sectionTitle}>Personal Information</h3>
           <div className={styles.grid}>
             <FormField
@@ -295,33 +451,58 @@ export default function DoctorSignupPage() {
               type="email"
               placeholder="Enter your email"
               required
+              readOnly={Boolean(googleUser)}
+              hint={googleUser ? 'Verified via your Google account' : undefined}
               {...field('email')}
               autoComplete="email"
             />
-            <FormField
-              label="Password"
-              type="password"
-              placeholder="Create a password"
-              required
-              {...field('password')}
-              autoComplete="new-password"
-              hint="Minimum 8 characters with a letter and a number."
-            />
-            {values.password && !errors.password && (
-              <PasswordStrength value={values.password} className={styles.strength} />
+            {googleUser ? (
+              <div style={{
+                gridColumn: '1 / -1',
+                background: '#f8fafc',
+                border: '1px dashed #cbd5e1',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                color: '#475569',
+                fontSize: '13px',
+                margin: '4px 0 8px',
+              }}>
+                <span style={{ fontSize: '18px' }}>🔒</span>
+                <div>
+                  <strong>Password not required.</strong> You can log in securely anytime using Google Sign-In with <strong>{googleUser.email}</strong>.
+                </div>
+              </div>
+            ) : (
+              <>
+                <FormField
+                  label="Password"
+                  type="password"
+                  placeholder="Create a password"
+                  required
+                  {...field('password')}
+                  autoComplete="new-password"
+                  hint="Minimum 8 characters with a letter and a number."
+                />
+                {values.password && !errors.password && (
+                  <PasswordStrength value={values.password} className={styles.strength} />
+                )}
+                <FormField
+                  label="Confirm Password"
+                  type="password"
+                  placeholder="Re-enter your password"
+                  required
+                  {...field('confirmPassword')}
+                  autoComplete="new-password"
+                />
+              </>
             )}
-            <FormField
-              label="Confirm Password"
-              type="password"
-              placeholder="Re-enter your password"
-              required
-              {...field('confirmPassword')}
-              autoComplete="new-password"
-            />
             <FileUpload
               label="Profile Photo"
-              required
-              hint="Will appear on your professional profile."
+              required={!googleUser?.picture}
+              hint={googleUser?.picture ? 'Google avatar connected. You may upload a different photo if preferred.' : 'Will appear on your professional profile.'}
               {...fileField('profilePhoto')}
             />
           </div>
@@ -495,6 +676,11 @@ export default function DoctorSignupPage() {
           </p>
         </form>
       )}
+
+      <GoogleSetupModal
+        open={showSetupModal}
+        onClose={() => setShowSetupModal(false)}
+      />
     </AuthLayout>
   );
 }

@@ -34,6 +34,13 @@ function sessionFrom(user, token) {
   };
 }
 
+export function saveSession(data) {
+  if (!data) return null;
+  const session = sessionFrom(data.user, data.token);
+  write(SESSION_KEY, session);
+  return session;
+}
+
 export async function signupPatient(payload) {
   const data = await api('/auth/signup/patient', {
     method: 'POST',

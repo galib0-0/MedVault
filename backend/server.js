@@ -1,18 +1,21 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config();
+
 import authRoutes from './routes/auth.js';
 import recordsRouter from './routes/records.js';
 import doctorRoutes from './routes/doctor.js';
 import adminRoutes from './routes/admin.js';
 import dependentsRoutes from './routes/dependents.js';
 import User from './models/User.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 

@@ -1,8 +1,61 @@
 import { googleAuth } from './auth';
+import { api } from './api';
 
 export const GOOGLE_CLIENT_ID =
   (import.meta.env.VITE_GOOGLE_CLIENT_ID && import.meta.env.VITE_GOOGLE_CLIENT_ID.trim()) ||
   '1094871067975-vrrhfem71sseh67g6lsfugtdvq4e9k6c.apps.googleusercontent.com';
+
+/**
+ * Triggers authentic Google OAuth 2.0 popup and verifies the identity on the backend.
+ * Checks whether the user already exists in the system or is a new registrant.
+ * Returns { exists: true, session, user } OR { exists: false, googleUser: { email, fullName, picture, googleId, accessToken } }.
+ */
+export function promptGoogleVerify({ promptMode = 'select_account' } = {}) {
+  return new Promise((resolve, reject) => {
+    const clientId = GOOGLE_CLIENT_ID;
+
+    if (!window.google?.accounts?.oauth2) {
+      const err = new Error(
+        'Google Identity Services SDK is not loaded yet. Please verify internet connection and refresh.'
+      );
+      err.code = 'SDK_NOT_LOADED';
+      return reject(err);
+    }
+
+    try {
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId.trim(),
+        scope: 'email profile openid',
+        callback: async (tokenResponse) => {
+          if (tokenResponse.error) {
+            return reject(new Error(tokenResponse.error_description || tokenResponse.error));
+          }
+
+          if (!tokenResponse.access_token) {
+            return reject(new Error('No access token returned from Google authentication.'));
+          }
+
+          try {
+            const data = await api('/auth/google/verify', {
+              method: 'POST',
+              body: { accessToken: tokenResponse.access_token },
+            });
+            resolve(data);
+          } catch (apiErr) {
+            reject(apiErr);
+          }
+        },
+        error_callback: (err) => {
+          reject(new Error(err?.message || 'Google popup closed or cancelled.'));
+        },
+      });
+
+      tokenClient.requestAccessToken({ prompt: promptMode });
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
 
 /**
  * Triggers authentic Google OAuth 2.0 popup using Google Identity Services (GIS).
