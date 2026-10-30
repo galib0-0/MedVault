@@ -14,7 +14,7 @@ import { useToast } from '../../../components/Toast';
 
 const LANGS = ['English', 'Telugu', 'Hindi', 'Tamil', 'Kannada', 'Malayalam', 'Bengali', 'Marathi'];
 
-export default function AISummaryCard({ aiSummary = null, onUpload }) {
+export default function AISummaryCard({ aiSummary = null, onUpload, onTriggerSummarize }) {
   const toast = useToast();
   const [lang, setLang] = useState('English');
   const [open, setOpen] = useState(false);
@@ -29,12 +29,13 @@ export default function AISummaryCard({ aiSummary = null, onUpload }) {
     setReSummarizing(true);
     try {
       await reSummarizeRecord(aiSummary.id);
-      toast('Generating full AI summary with Google Gemini. Updating now...', 'info');
-      setTimeout(() => {
-        window.location.reload();
-      }, 4000);
+      toast('AI summarization started with Google Gemini. Analyzing now...', 'info');
+      if (onTriggerSummarize) {
+        onTriggerSummarize(aiSummary.id);
+      }
     } catch (err) {
       toast(err.message || 'Failed to trigger Gemini summarization.', 'error');
+    } finally {
       setReSummarizing(false);
     }
   };
@@ -223,7 +224,7 @@ export default function AISummaryCard({ aiSummary = null, onUpload }) {
                 </div>
               </div>
 
-              {aiSummary.id && (aiSummary.source === 'local' || aiSummary.source === 'error' || aiSummary.finding?.includes('unavailable') || aiSummary.finding?.includes('error')) && (
+              {aiSummary.id && (!aiSummary.hasSummary || aiSummary.isFailed || aiSummary.source === 'local' || aiSummary.source === 'error' || aiSummary.source === 'none' || aiSummary.finding?.includes('unavailable') || aiSummary.finding?.includes('error')) && (
                 <div style={{
                   marginTop: '16px',
                   padding: '16px',

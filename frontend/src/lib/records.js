@@ -77,4 +77,13 @@ export async function reSummarizeRecord(recordId) {
   });
 }
 
+export async function deleteRecord(recordId) {
+  const token = tokenFromSession();
+  return api(`/records/${recordId}`, {
+    method: 'DELETE',
+    token,
+  });
+}
+
+
 

@@ -247,6 +247,31 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/records/:id - Safely delete record, file, and AI summary
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const record = await Record.findOne({ _id: req.params.id, user: req.user._id });
+    if (!record) {
+      return res.status(404).json({ message: 'Record not found or unauthorized.' });
+    }
+
+    // Safely remove physical file from disk if it exists
+    if (record.storagePath) {
+      await fs.unlink(record.storagePath).catch((unlinkErr) => {
+        console.warn(`[Delete Record] Could not unlink ${record.storagePath}:`, unlinkErr.message);
+      });
+    }
+
+    // Remove document from MongoDB (also cleans up embedded aiSummary)
+    await Record.deleteOne({ _id: record._id });
+
+    res.json({ success: true, message: 'Record and associated AI summary safely deleted.' });
+  } catch (err) {
+    console.error('[Delete Record Error]:', err);
+    res.status(500).json({ message: 'Failed to delete record.' });
+  }
+});
+
 // POST /api/records/:id/re-summarize - Re-trigger AI summarization with Gemini
 router.post('/:id/re-summarize', requireAuth, async (req, res) => {
   try {
@@ -276,6 +301,22 @@ router.post('/:id/re-summarize', requireAuth, async (req, res) => {
       } catch {
         /* background update failure is non-fatal */
       }
+    }).catch(async (fatalErr) => {
+      console.error('[Record Summarize Fatal]:', fatalErr.message);
+      await Record.updateOne(
+        { _id: record._id },
+        {
+          aiStatus: 'failed',
+          aiSummary: {
+            summary: `AI summarization encountered an issue (${fatalErr.message}). You can click below to retry.`,
+            finding: 'AI analysis error',
+            findingType: 'none',
+            recommendation: 'Click retry to re-analyze with Gemini.',
+            critical: false,
+            source: 'error',
+          },
+        }
+      ).catch(() => {});
     });
 
     res.json({ message: 'Summarization started.', record });

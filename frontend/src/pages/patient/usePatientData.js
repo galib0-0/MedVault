@@ -65,27 +65,49 @@ function recordLabel(date) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function summaryFromRecord(record) {
-  if (!record || !record.aiSummary) return null;
+export function summaryFromRecord(record) {
+  if (!record) return null;
   const fileUrl = record.fileUrl
     ? record.fileUrl.startsWith('http')
       ? record.fileUrl
       : `${BASE_URL.replace(/\/api$/, '')}${record.fileUrl}`
     : null;
+
+  if (record.aiStatus === 'processing') {
+    return {
+      id: record.id || record._id,
+      reportName: record.name,
+      generatedAt: 'Analyzing now...',
+      report: '',
+      summary: 'Your medical document has been securely uploaded and is being analyzed by MedVault AI using Google Gemini. Extracting lab values, reference ranges, and doctor impressions...',
+      finding: 'AI Analysis in progress...',
+      findingType: 'none',
+      recommendation: 'This card will automatically update once the analysis is ready.',
+      isProcessing: true,
+      source: 'processing',
+      fileUrl,
+    };
+  }
+
+  const ai = record.aiSummary;
+  const hasSummary = Boolean(ai && (ai.report || ai.summary) && ai.source !== 'local' && ai.source !== 'error');
+
   return {
     id: record.id || record._id,
     reportName: record.name,
     generatedAt: recordLabel(record.createdAt),
-    report: record.aiSummary.report || '',
-    summary: record.aiSummary.summary || '',
-    finding: record.aiSummary.finding || '',
-    findingType: record.aiSummary.findingType === 'critical' ? 'critical' : 'warning',
-    recommendation: record.aiSummary.recommendation || '',
-    medications: record.aiSummary.medications || [],
-    isPrescription: Boolean(record.aiSummary.isPrescription),
+    report: ai?.report || '',
+    summary: ai?.summary || (hasSummary ? '' : 'No AI summary generated for this document yet. Click below to analyze it with Google Gemini.'),
+    finding: ai?.finding || (hasSummary ? '' : 'AI Summary Pending'),
+    findingType: ai?.findingType === 'critical' ? 'critical' : 'warning',
+    recommendation: ai?.recommendation || (hasSummary ? '' : 'Click below to generate a detailed clinical analysis with Google Gemini.'),
+    medications: ai?.medications || [],
+    isPrescription: Boolean(ai?.isPrescription),
     fileUrl,
     disclaimer: 'AI-generated summary for easier understanding. Please consult a qualified healthcare professional for medical advice.',
-    source: record.aiSummary.source || 'gemini',
+    source: ai?.source || (hasSummary ? 'gemini' : 'none'),
+    hasSummary,
+    isFailed: record.aiStatus === 'failed' || ai?.source === 'error' || ai?.source === 'local',
   };
 }
 
@@ -190,23 +212,8 @@ export function usePatientData(session) {
   }
 
   const mostRecent = records[0];
-  let resolvedSummary = null;
-  if (mostRecent && mostRecent.aiStatus === 'processing') {
-    resolvedSummary = {
-      id: mostRecent.id || mostRecent._id,
-      reportName: mostRecent.name,
-      generatedAt: 'Analyzing now...',
-      report: '',
-      summary: 'Your medical document has been securely uploaded and is being analyzed by MedVault AI using Google Gemini. Extracting lab values, reference ranges, and doctor impressions...',
-      finding: 'AI Analysis in progress...',
-      findingType: 'none',
-      recommendation: 'This card will automatically update once the analysis is ready.',
-      isProcessing: true,
-      source: 'processing',
-    };
-  } else {
-    resolvedSummary = summaryFromRecord(latestReady || mostRecent);
-  }
+  const targetRecord = (mostRecent && mostRecent.aiStatus === 'processing') ? mostRecent : (latestReady || mostRecent);
+  const resolvedSummary = summaryFromRecord(targetRecord);
 
   return {
     isAdmin: false,

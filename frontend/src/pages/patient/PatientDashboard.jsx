@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Logo from '../../components/Logo';
 import { useToast } from '../../components/Toast';
 import { signOut, getSession } from '../../lib/auth';
-import { usePatientData } from './usePatientData';
+import { usePatientData, summaryFromRecord } from './usePatientData';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import StatCards from './components/StatCards';
@@ -39,11 +39,36 @@ export default function PatientDashboard() {
   const [addDependentOpen, setAddDependentOpen] = useState(false);
   const [selectedDependent, setSelectedDependent] = useState(null);
   const [passportOpen, setPassportOpen] = useState(false);
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
 
   const session = useMemo(() => getSession(), [version]);
   const name = session?.name || 'Patient';
   const data = usePatientData(session);
   const { triggerSimulatedRequest } = useAccess();
+
+  const selectedRecord = selectedRecordId
+    ? data.records.find((r) => String(r.id || r._id) === String(selectedRecordId))
+    : null;
+  const displayedSummary = selectedRecord
+    ? summaryFromRecord(selectedRecord)
+    : data.aiSummary;
+
+  const handleSelectRecord = (record) => {
+    setSelectedRecordId(record.id || record._id);
+    goTo('summary');
+  };
+
+  const handleDeleteRecord = (deletedId) => {
+    if (selectedRecordId && String(selectedRecordId) === String(deletedId)) {
+      setSelectedRecordId(null);
+    }
+    data.refresh();
+  };
+
+  const handleTriggerSummarize = (recordId) => {
+    setSelectedRecordId(recordId);
+    data.refresh();
+  };
 
   const sectionRefs = useRef({});
   const goTo = (id) => {
@@ -90,7 +115,10 @@ export default function PatientDashboard() {
     setEditOpen(true);
   };
 
-  const handleUploaded = () => {
+  const handleUploaded = (newRec) => {
+    if (newRec?.id) {
+      setSelectedRecordId(newRec.id);
+    }
     data.refresh();
     setVersion((v) => v + 1);
   };
@@ -125,13 +153,25 @@ export default function PatientDashboard() {
 
           <div className={styles.gridWrap}>
             <div className={`${styles.slot} ${styles.slotCol1}`} ref={bindRef('records')}>
-              <RecordsSection records={data.records} loading={data.recordsLoading} onViewAll={() => goTo('records')} onUpload={scrollToUpload} />
+              <RecordsSection
+                records={data.records}
+                loading={data.recordsLoading}
+                onViewAll={() => goTo('records')}
+                onUpload={scrollToUpload}
+                selectedRecordId={selectedRecordId}
+                onSelectRecord={handleSelectRecord}
+                onDelete={handleDeleteRecord}
+              />
             </div>
             <div className={styles.slot} ref={bindRef('emergency')}>
               <EmergencyCard emergency={data.emergency} onEdit={openEdit} />
             </div>
             <div className={`${styles.slot} ${styles.slotCol1}`} ref={bindRef('summary')}>
-              <AISummaryCard aiSummary={data.aiSummary} onUpload={scrollToUpload} />
+              <AISummaryCard
+                aiSummary={displayedSummary}
+                onUpload={scrollToUpload}
+                onTriggerSummarize={handleTriggerSummarize}
+              />
             </div>
             <div className={styles.slot} ref={bindRef('notifications')}>
               <NotificationsPanel notifications={data.notifications} />
