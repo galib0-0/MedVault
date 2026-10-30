@@ -12,7 +12,7 @@ function getApiKey() {
 }
 
 function getModel() {
-  return (process.env.GEMINI_MODEL && process.env.GEMINI_MODEL.trim()) || 'gemini-flash-latest';
+  return (process.env.GEMINI_MODEL && process.env.GEMINI_MODEL.trim()) || 'gemini-3-flash-preview';
 }
 
 function buildPrompt({ originalName, category, mimeType }) {
@@ -346,16 +346,18 @@ export async function summarizeRecord({ filePath, originalName, category, mimeTy
     ],
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: 16384,
+      maxOutputTokens: 8192,
       responseMimeType: 'application/json',
-      thinkingConfig: { thinkingBudget: 1024 },
     },
   });
 
   try {
     const json = await callWithRetry(body);
     const parts = json?.candidates?.[0]?.content?.parts || [];
-    const texts = parts.map((p) => p.text || '').filter(Boolean);
+    const contentParts = parts.filter((p) => !p.thought);
+    const texts = (contentParts.length ? contentParts : parts)
+      .map((p) => p.text || '')
+      .filter(Boolean);
     let parsed = null;
     for (const t of texts) {
       parsed = parseJSON(t);
